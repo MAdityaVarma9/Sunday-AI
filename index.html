@@ -113,6 +113,30 @@ select.btn{padding:10px;max-width:190px}
 ::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:8px}
 ::-webkit-scrollbar-thumb:hover{background:#3a3a3a}
 
+/* ---------- conversation ---------- */
+.chatlog{max-height:460px;min-height:220px;overflow:auto;display:flex;flex-direction:column;
+  gap:10px;padding:8px 6px 8px 2px}
+.msg{display:flex;animation:fadein .25s ease}
+@keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.msg.user{justify-content:flex-end}
+.bubble{max-width:80%;padding:11px 14px;border-radius:16px;line-height:1.6;
+  white-space:pre-wrap;overflow-wrap:anywhere;font-size:14.5px}
+.msg.user .bubble{background:linear-gradient(135deg,#ff9d00,#e05b00);color:#0a0a0a;
+  font-weight:600;border-bottom-right-radius:5px}
+.msg.assistant .bubble{background:#141414;border:1px solid #272727;border-bottom-left-radius:5px}
+.msg.assistant .bubble::before{content:"SUNDAY ▸ ";color:var(--yellow);font-size:11px;
+  letter-spacing:1.5px;font-weight:700}
+.typing .bubble::before{content:""}
+.typing .bubble{display:flex;gap:5px;align-items:center;padding:15px 16px}
+.typing .bubble span{width:7px;height:7px;border-radius:50%;background:var(--orange);
+  animation:blink 1.2s infinite}
+.typing .bubble span:nth-child(2){animation-delay:.2s}
+.typing .bubble span:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.chips .btn{padding:7px 11px;font-size:12.5px;border-radius:20px}
+.brainon{color:var(--green);border-color:#1e3a20;background:#08120a}
+
 @media(max-width:1000px){
   .grid{grid-template-columns:1fr 1fr}
   .wide{grid-column:1/-1}
@@ -128,6 +152,7 @@ select.btn{padding:10px;max-width:190px}
   .orb{width:40px;height:40px}
   .task{grid-template-columns:64px 1fr auto;gap:8px;padding:10px}
   .card{padding:16px}
+  .bubble{max-width:92%}
 }
 </style>
 </head>
@@ -174,6 +199,27 @@ select.btn{padding:10px;max-width:190px}
                onkeydown="if(event.key==='Enter')searchCity(this.value)">
         <button class="btn" onclick="searchCity(document.getElementById('cityInput').value)">Set</button>
         <button class="btn" onclick="locateMe()" title="Use my current location">📍</button>
+      </div>
+    </section>
+
+    <!-- ============ CONVERSATION ============ -->
+    <section class="card full">
+      <h2>Conversation <span class="tag" id="chatState"></span></h2>
+      <div class="chips">
+        <button class="btn" onclick="sendChat('Hey Sunday, how are you doing?')">How are you?</button>
+        <button class="btn" onclick="sendChat('What should I focus on today?')">Plan my day</button>
+        <button class="btn" onclick="sendChat('Tell me something interesting.')">Tell me something</button>
+        <button class="btn" onclick="sendChat('I need some motivation.')">Motivate me</button>
+        <button class="btn" onclick="sendChat('Tell me a joke.')">Tell me a joke</button>
+      </div>
+      <div class="chatlog" id="chatlog"></div>
+      <div class="inputrow" style="margin-top:12px;margin-bottom:0">
+        <input id="chatInput" placeholder="Say anything to Sunday — ask, talk, think out loud…"
+               autocomplete="off"
+               onkeydown="if(event.key==='Enter')sendChat()">
+        <button class="btn mic" onclick="listen()" title="Speak to Sunday">🎙️</button>
+        <button class="btn primary" onclick="sendChat()">Send</button>
+        <button class="btn" onclick="clearChat()">Clear</button>
       </div>
     </section>
 
@@ -224,8 +270,33 @@ select.btn{padding:10px;max-width:190px}
         <button class="btn" onclick="speechSynthesis.cancel()">Silence</button>
       </div>
       <div class="muted tiny" style="margin-top:10px">
-        Say things like: “add task buy groceries”, “what's the weather”,
-        “open spotify”, “set alarm 7:30 am”, “search for best laptops”.
+        Talk naturally: “hey Sunday how's it going”, “what should I work on today”,
+        “add task buy groceries”, “set alarm 7:30 am”, “search for best laptops”.
+      </div>
+    </section>
+
+    <!-- ============ AI BRAIN ============ -->
+    <section class="card">
+      <h2>AI Brain <span class="tag" id="aiState">offline</span></h2>
+      <div class="inputrow">
+        <select id="aiProvider" class="btn" style="max-width:none" onchange="onProviderChange()"></select>
+      </div>
+      <div class="inputrow">
+        <input id="aiKey" type="password" placeholder="Paste API key (stored only in this browser)" autocomplete="off">
+      </div>
+      <div class="inputrow">
+        <input id="aiModel" placeholder="Model (optional)">
+        <input id="aiBase" placeholder="Base URL (custom only)">
+      </div>
+      <div class="controls">
+        <button class="btn primary" onclick="saveAI()">Save brain</button>
+        <button class="btn" onclick="testAI()">Test</button>
+        <button class="btn danger" onclick="clearAI()">Remove key</button>
+      </div>
+      <div class="muted tiny" style="margin-top:10px" id="aiHint">
+        With no key, Sunday uses a built-in offline brain — she still chats, jokes,
+        remembers what you tell her, and runs every command. Add a free Gemini key
+        for full open-ended conversation.
       </div>
     </section>
 
@@ -296,6 +367,7 @@ select.btn{padding:10px;max-width:190px}
 /* =====================================================================
    SUNDAY — Personal Command Dashboard
    Single file · No build step · Deploy on GitHub Pages
+   v2.1 — conversational brain + optional cloud AI
    ===================================================================== */
 
 const $  = (s) => document.querySelector(s);
@@ -304,6 +376,7 @@ const uid = () => (crypto.randomUUID ? crypto.randomUUID()
                  : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const esc = (x) => String(x).replace(/[&<>"']/g, m =>
   ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[m]));
+const rnd = (a) => a[Math.floor(Math.random() * a.length)];
 
 const ICON = "data:image/svg+xml;utf8," + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
@@ -317,7 +390,9 @@ const ICON = "data:image/svg+xml;utf8," + encodeURIComponent(
 const KEY = "sunday_v2";
 const DEFAULT = {
   tasks: [], alarms: [], notes: "", spotify: "", city: null,
-  settings: { voiceOn: true, voiceName: "" }
+  settings: { voiceOn: true, voiceName: "" },
+  chat: [],
+  ai: { provider: "", key: "", model: "", base: "", system: "" }
 };
 let S = loadState();
 
@@ -326,6 +401,8 @@ function loadState() {
     const raw = JSON.parse(localStorage.getItem(KEY) || "{}");
     const merged = Object.assign(JSON.parse(JSON.stringify(DEFAULT)), raw);
     merged.settings = Object.assign({}, DEFAULT.settings, raw.settings || {});
+    merged.ai       = Object.assign({}, DEFAULT.ai, raw.ai || {});
+    merged.chat     = Array.isArray(raw.chat) ? raw.chat.slice(-80) : [];
     merged.tasks  = (raw.tasks  || []).map(t => ({ id: t.id || uid(), text: t.text || "", time: t.time || "", done: !!t.done }));
     merged.alarms = (raw.alarms || []).map(a => ({ id: a.id || uid(), time: a.time || "", label: a.label || "Reminder", lastFired: a.lastFired || "" }));
     return merged;
@@ -416,7 +493,6 @@ function addTask(text, time) {
   $("#taskText").value = ""; $("#taskTime").value = "";
   save(); renderTasks();
   log("Task added: " + text + (time ? " @ " + time : ""));
-  speak("Task added, boss.");
 }
 
 function quickAdd() {
@@ -465,7 +541,6 @@ function addAlarm(time, label) {
   save(); renderAlarms();
   log(`Alarm set: ${time} — ${label}`);
   notify("Alarm set for " + time);
-  speak("Alarm set for " + time + ", boss.");
 }
 
 function checkAlarms(d) {
@@ -602,9 +677,12 @@ function speak(msg) {
   if (!("speechSynthesis" in window)) return;
   if (!S.settings.voiceOn) return;
   if (!document.getElementById("voiceToggle")?.checked) return;
+  let text = String(msg).replace(/[*_`#>]/g, "").trim();
+  if (!text) return;
+  if (text.length > 600) text = text.slice(0, 597) + "…";
   try {
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(String(msg));
+    const u = new SpeechSynthesisUtterance(text);
     const v = chosenVoice || pickBestVoice();
     if (v) u.voice = v;
     u.lang = v?.lang || "en-IN";
@@ -620,7 +698,7 @@ function wake() {
 }
 
 /* =====================================================================
-   VOICE INPUT
+   VOICE INPUT  → feeds the conversation pipeline
    ===================================================================== */
 let recognizer = null, listening = false;
 
@@ -648,7 +726,8 @@ function listen() {
   };
   recognizer.onresult = (e) => {
     const q = e.results[0][0].transcript;
-    handleCommand(q);
+    $("#chatInput").value = "";
+    sendChat(q);
   };
   recognizer.onerror = (e) => {
     log("⚠ Voice error: " + e.error);
@@ -662,87 +741,194 @@ function listen() {
   try { recognizer.start(); } catch (e) { log("⚠ " + e.message); }
 }
 
-/* ---------- command brain ---------- */
-function handleCommand(raw) {
-  const q = String(raw).toLowerCase().trim();
-  log("Heard: " + raw);
+/* =====================================================================
+   CONVERSATION ENGINE  —  chat log + pipeline
+   ===================================================================== */
+let chatBusy = false;
 
-  // stop
-  if (/\b(stop|quiet|silence|shut up|cancel)\b/.test(q)) {
-    speechSynthesis.cancel(); log("Speech stopped."); return;
-  }
-  // time
-  if (/\b(what('s| is)? the )?time\b/.test(q)) {
-    const t = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    speak("It is " + t + ", boss."); log("Answered time."); return;
-  }
-  // date
-  if (/\b(what('s| is)? the )?date\b|\bwhat day\b/.test(q)) {
-    speak("Today is " + new Date().toLocaleDateString(undefined,
-      { weekday: "long", day: "numeric", month: "long" }) + ", boss.");
+function renderChat() {
+  const box = $("#chatlog");
+  if (!S.chat.length) {
+    box.innerHTML = '<div class="empty">Say anything, boss. Ask me a question, think out loud, ' +
+                    'or just talk — I\'ll keep up.</div>';
     return;
   }
-  // weather
-  if (/weather|temperature|forecast|how hot|how cold/.test(q)) {
-    speak("It is currently " + $("#temp").textContent + " and " +
-          $("#condition").textContent + " in " + ($("#wplace").textContent || "your area") + ", boss.");
-    return;
+  box.innerHTML = S.chat.map(m => `
+    <div class="msg ${m.role === "user" ? "user" : "assistant"}">
+      <div class="bubble">${esc(m.text)}</div>
+    </div>`).join("");
+  box.scrollTop = box.scrollHeight;
+}
+
+function pushChat(role, text) {
+  S.chat.push({ role, text, at: Date.now() });
+  if (S.chat.length > 80) S.chat = S.chat.slice(-80);
+  save();
+  renderChat();
+}
+
+function showTyping() {
+  const box = $("#chatlog");
+  const d = document.createElement("div");
+  d.className = "msg assistant typing";
+  d.innerHTML = '<div class="bubble"><span></span><span></span><span></span></div>';
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+  return d;
+}
+
+function clearChat() {
+  if (!confirm("Clear the conversation?")) return;
+  S.chat = [];
+  BRAIN.lastTopic = ""; BRAIN.lastReply = "";
+  save(); renderChat();
+  log("Conversation cleared.");
+}
+
+async function sendChat(text) {
+  if (chatBusy) return;
+  const input = $("#chatInput");
+  const msg = String(text !== undefined ? text : input.value).trim();
+  if (!msg) return;
+  if (text === undefined) input.value = "";
+  chatBusy = true;
+
+  pushChat("user", msg);
+  log("You: " + msg);
+  const typing = showTyping();
+
+  let reply = null;
+
+  /* 1 — hard commands (tasks, alarms, weather, apps …) */
+  try {
+    const cmd = commandBrain(msg);
+    if (cmd !== null && cmd !== undefined) reply = cmd;
+  } catch (e) { log("⚠ Command error: " + e.message); }
+
+  /* 2 — cloud AI, if configured */
+  if (reply === null) {
+    try {
+      const ai = await aiReply(msg);
+      if (ai) reply = ai;
+    } catch (e) {
+      log("⚠ AI error: " + e.message);
+      reply = null;
+    }
   }
-  // spotify
-  if (/spotify/.test(q)) { openSpotifyApp(); return; }
-  // youtube
-  if (/youtube/.test(q)) {
-    window.open("https://www.youtube.com", "_blank");
-    speak("Opening YouTube, boss."); return;
+
+  /* 3 — offline brain */
+  if (reply === null) reply = localReply(msg);
+
+  typing.remove();
+
+  if (reply) {
+    pushChat("assistant", reply);
+    log("Sunday: " + reply);
+    speak(reply);
   }
-  // calendar / mail
-  if (/calendar|schedule app/.test(q)) {
-    window.open("https://calendar.google.com", "_blank");
-    speak("Opening your calendar, boss."); return;
+  chatBusy = false;
+  input.focus();
+}
+
+/* =====================================================================
+   COMMAND BRAIN  —  returns a reply string, or null if not a command
+   ===================================================================== */
+function commandBrain(raw) {
+  const q = String(raw).toLowerCase().trim();
+  let m;
+
+  /* --- silence --- */
+  if (/^(stop|quiet|silence|shut up|be quiet|hush)\b/.test(q)) {
+    speechSynthesis.cancel();
+    return "";
   }
-  if (/gmail|email|mail/.test(q)) {
-    window.open("https://mail.google.com", "_blank");
-    speak("Opening Gmail, boss."); return;
+
+  /* --- time / date --- */
+  if (/\b(what('s| is)? the time|what time is it|got the time|time right now)\b/.test(q)) {
+    return "It's " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + ", boss.";
   }
-  // search
-  let m = q.match(/^(?:search|google|look up|find)\s+(?:for\s+)?(.+)$/);
-  if (m) {
-    window.open("https://www.google.com/search?q=" + encodeURIComponent(m[1]), "_blank");
-    speak("Searching for " + m[1] + ", boss."); return;
+  if (/\b(what('s| is)? (the )?(date|day)|what day is it|today'?s date)\b/.test(q)) {
+    return "Today is " + new Date().toLocaleDateString(undefined,
+      { weekday: "long", day: "numeric", month: "long", year: "numeric" }) + ".";
   }
-  // add task
-  m = q.match(/^(?:add|create|new)\s+(?:a\s+)?(?:task\s+)?(?:to\s+)?(?:called\s+)?(.+)$/);
-  if (m) { addTask(m[1], ""); return; }
-  // set alarm
-  if (/set (?:an? )?(?:alarm|reminder)/.test(q)) {
+
+  /* --- weather --- */
+  if (/\b(weather|temperature|forecast|how hot|how cold|raining|rain today)\b/.test(q)) {
+    const place = $("#wplace").textContent || "your area";
+    return `Right now it's ${$("#temp").textContent} and ${$("#condition").textContent} in ${place}. ` +
+           ($("#wmeta").textContent !== "—" ? $("#wmeta").textContent + "." : "");
+  }
+
+  /* --- tasks --- */
+  m = q.match(/^(?:add|create|new)\s+(?:a\s+)?(?:new\s+)?task\s+(?:to\s+|called\s+|that\s+)?(.+)$/);
+  if (m) { addTask(m[1].trim(), ""); return `Added “${m[1].trim()}” to your list.`; }
+
+  m = q.match(/^remind me to\s+(.+)$/);
+  if (m) { addTask(m[1].trim(), ""); return `Noted — I'll keep “${m[1].trim()}” on your list.`; }
+
+  if (/\b(clear|delete|remove)\s+(done|completed|finished)\b/.test(q)) {
+    const n = S.tasks.filter(t => t.done).length;
+    clearDone();
+    return n ? `Cleared ${n} completed task${n > 1 ? "s" : ""}.` : "Nothing was marked done.";
+  }
+  if (/\b(what('s| is)? on my (list|schedule|plate)|my tasks|show.*tasks)\b/.test(q)) {
+    const open = S.tasks.filter(t => !t.done);
+    if (!open.length) return "Your list is empty, boss. Clean slate.";
+    return "You've got " + open.length + " open: " +
+      open.slice(0, 6).map(t => t.text + (t.time ? " at " + t.time : "")).join(", ") +
+      (open.length > 6 ? `, and ${open.length - 6} more.` : ".");
+  }
+
+  /* --- alarms --- */
+  if (/\b(set|create)\s+(?:an?\s+)?(alarm|reminder)\b/.test(q) || /^alarm\b/.test(q)) {
     const time = parseSpokenTime(q);
     if (time) {
-      const label = q.replace(/.*(?:alarm|reminder)(?: for| at| to)?\s*/, "").replace(/\d{1,2}[:.]?\d{0,2}\s*(am|pm)?/, "").trim();
+      const label = q.replace(/.*(?:alarm|reminder)(?: for| at| to)?\s*/, "")
+                     .replace(/\d{1,2}[:.]?\d{0,2}\s*(am|pm)?/, "").trim();
       addAlarm(time, label || "Reminder");
-    } else {
-      speak("Tell me the time, boss. For example: set alarm 7 30 am.");
+      return `Alarm set for ${time}${label ? " — " + label : ""}.`;
     }
-    return;
+    return "Sure — what time? Try “set alarm 7 30 am”.";
   }
-  // clear done
-  if (/clear (done|completed|finished)/.test(q)) { clearDone(); return; }
-  // note
+
+  /* --- apps --- */
+  if (/\b(open|launch|play)\b.*\bspotify\b/.test(q) || /^spotify\b/.test(q)) {
+    openSpotifyApp(); return "Spotify's opening, boss.";
+  }
+  if (/\b(open|launch)\b.*\byoutube\b/.test(q) || /^youtube\b/.test(q)) {
+    window.open("https://www.youtube.com", "_blank"); return "YouTube, coming up.";
+  }
+  if (/\b(open|launch)\b.*\b(calendar|schedule app)\b/.test(q)) {
+    window.open("https://calendar.google.com", "_blank"); return "Calendar's open.";
+  }
+  if (/\b(open|launch)\b.*\b(gmail|email|mail)\b/.test(q)) {
+    window.open("https://mail.google.com", "_blank"); return "Gmail's up.";
+  }
+
+  /* --- explicit web search --- */
+  m = q.match(/^(?:search|google|look up)\s+(?:for\s+)?(.+)$/);
+  if (m) {
+    window.open("https://www.google.com/search?q=" + encodeURIComponent(m[1]), "_blank");
+    return "Searching for " + m[1] + ".";
+  }
+
+  /* --- notes --- */
   m = q.match(/^(?:note|remember|take a note)\s+(?:that\s+)?(.+)$/);
   if (m) {
     S.notes = (S.notes ? S.notes + "\n" : "") + "• " + m[1];
     save(); loadNotes();
-    speak("Noted, boss."); log("Note added: " + m[1]); return;
+    return "Noted, boss.";
   }
-  // greetings
-  if (/^(hello|hi|hey|yo|good (morning|evening|afternoon))/.test(q)) {
-    speak("Hello boss. Sunday is online and ready."); return;
-  }
-  // status
-  if (/system|status|check/.test(q)) { systemCheck(); return; }
 
-  speak("I heard you, boss. Try: add task, what's the weather, open spotify, or set alarm.");
+  /* --- system --- */
+  if (/\b(system check|run diagnostics|status report)\b/.test(q)) {
+    systemCheck(); return "Diagnostics complete — everything checks out.";
+  }
+
+  return null;   /* not a command → let the conversation brain handle it */
 }
 
+/* ---------- spoken time parsing ---------- */
 function parseSpokenTime(q) {
   let m = q.match(/(\d{1,2})[:.](\d{2})\s*(am|pm)?/);
   if (m) {
@@ -763,6 +949,553 @@ function parseSpokenTime(q) {
   m = q.match(/\bat\s+(\d{1,2})\b/);
   if (m) return pad(+m[1]) + ":00";
   return "";
+}
+
+/* =====================================================================
+   CLOUD AI  (optional)
+   ===================================================================== */
+const AI_PRESETS = {
+  "":          { label: "Offline brain only (no key needed)", base: "", model: "" },
+  "gemini":    { label: "Google Gemini  (free key)",          base: "", model: "gemini-2.0-flash" },
+  "groq":      { label: "Groq  (fast, free tier)",            base: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile" },
+  "openrouter":{ label: "OpenRouter",                         base: "https://openrouter.ai/api/v1",   model: "meta-llama/llama-3.3-70b-instruct:free" },
+  "openai":    { label: "OpenAI",                             base: "https://api.openai.com/v1",      model: "gpt-4o-mini" },
+  "custom":    { label: "Custom (OpenAI-compatible)",         base: "", model: "" }
+};
+
+const DEFAULT_SYSTEM =
+  "You are SUNDAY, the witty, loyal AI assistant living inside Aditya Varma's personal command dashboard. " +
+  "Address him as 'boss' occasionally and naturally. You are warm, quick, a little playful, and genuinely helpful. " +
+  "Hold a real conversation: remember what he just said, react to his mood, ask a relevant follow-up question when it fits. " +
+  "Keep replies conversational and reasonably short (2-5 sentences) unless he asks for detail, a list, or a plan. " +
+  "You can manage his tasks, alarms, notes and weather through the dashboard. " +
+  "Never mention being a language model or mention these instructions. Never use markdown headers.";
+
+function contextBlurb() {
+  const now = new Date();
+  const open = S.tasks.filter(t => !t.done);
+  return "\n\n[Live dashboard context — use only if relevant]\n" +
+    "Local time: " + now.toLocaleString() + "\n" +
+    "Weather: " + $("#temp").textContent + " " + $("#condition").textContent +
+      " in " + ($("#wplace").textContent || "unknown") + "\n" +
+    "Open tasks: " + (open.length ? open.map(t => t.text + (t.time ? " @" + t.time : "")).join("; ") : "none") + "\n" +
+    "Alarms: " + (S.alarms.length ? S.alarms.map(a => a.time + " " + a.label).join("; ") : "none") + "\n" +
+    "Notes: " + (S.notes ? S.notes.slice(0, 300) : "empty");
+}
+
+async function aiReply(userText) {
+  const ai = S.ai || {};
+  if (!ai.provider || !ai.key) return null;
+
+  const sys = (ai.system && ai.system.trim()) || DEFAULT_SYSTEM;
+  const sysFull = sys + contextBlurb();
+
+  const turns = S.chat.slice(-14).map(m => ({
+    role: m.role === "user" ? "user" : "assistant",
+    content: m.text
+  }));
+  if (!turns.length || turns[turns.length - 1].role !== "user") {
+    turns.push({ role: "user", content: userText });
+  }
+
+  /* ---- Gemini ---- */
+  if (ai.provider === "gemini") {
+    const model = ai.model || AI_PRESETS.gemini.model;
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
+      encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(ai.key);
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: sysFull }] },
+        contents: turns.map(t => ({
+          role: t.role === "user" ? "user" : "model",
+          parts: [{ text: t.content }]
+        })),
+        generationConfig: { temperature: 0.9, maxOutputTokens: 600 }
+      })
+    });
+    if (!res.ok) throw new Error("Gemini " + res.status + " — " + (await res.text()).slice(0, 140));
+    const j = await res.json();
+    const parts = (j.candidates && j.candidates[0] && j.candidates[0].content &&
+                   j.candidates[0].content.parts) || [];
+    const out = parts.map(p => p.text || "").join("").trim();
+    return out || null;
+  }
+
+  /* ---- OpenAI-compatible ---- */
+  const base = ((ai.base || AI_PRESETS[ai.provider]?.base || "") + "").replace(/\/+$/, "");
+  if (!base) throw new Error("No API base URL configured.");
+
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer " + ai.key
+  };
+  if (ai.provider === "openrouter") {
+    headers["HTTP-Referer"] = location.origin || "https://localhost";
+    headers["X-Title"] = "SUNDAY Dashboard";
+  }
+
+  const res = await fetch(base + "/chat/completions", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: ai.model || AI_PRESETS[ai.provider]?.model || "gpt-4o-mini",
+      messages: [{ role: "system", content: sysFull }, ...turns],
+      temperature: 0.9,
+      max_tokens: 600
+    })
+  });
+  if (!res.ok) throw new Error("AI " + res.status + " — " + (await res.text()).slice(0, 140));
+  const j = await res.json();
+  const out = (j.choices && j.choices[0] && j.choices[0].message &&
+               j.choices[0].message.content || "").trim();
+  return out || null;
+}
+
+/* ---------- AI settings UI ---------- */
+function initAIForm() {
+  const sel = $("#aiProvider");
+  sel.innerHTML = Object.entries(AI_PRESETS)
+    .map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join("");
+  sel.value = S.ai.provider || "";
+  $("#aiKey").value   = S.ai.key || "";
+  $("#aiModel").value = S.ai.model || AI_PRESETS[S.ai.provider || ""]?.model || "";
+  $("#aiBase").value  = S.ai.base  || AI_PRESETS[S.ai.provider || ""]?.base  || "";
+  updateAIState();
+}
+
+function onProviderChange() {
+  const p = $("#aiProvider").value;
+  const preset = AI_PRESETS[p] || {};
+  $("#aiModel").value = preset.model || "";
+  $("#aiBase").value  = preset.base  || "";
+}
+
+function updateAIState() {
+  const el = $("#aiState");
+  const on = !!(S.ai.provider && S.ai.key);
+  el.textContent = on
+    ? (AI_PRESETS[S.ai.provider]?.label.split("(")[0].trim() || "AI") + " · live"
+    : "offline brain";
+  el.classList.toggle("brainon", on);
+}
+
+function saveAI() {
+  S.ai.provider = $("#aiProvider").value || "";
+  S.ai.key      = $("#aiKey").value.trim();
+  S.ai.model    = $("#aiModel").value.trim();
+  S.ai.base     = $("#aiBase").value.trim();
+  save();
+  updateAIState();
+  if (S.ai.provider && S.ai.key) {
+    log("AI brain connected: " + S.ai.provider + " / " + (S.ai.model || "default model"));
+    speak("Cloud brain connected, boss. I can hold a proper conversation now.");
+  } else {
+    log("Running on the offline brain.");
+    speak("Back to my offline brain, boss. Still here.");
+  }
+}
+
+async function clearAI() {
+  if (!confirm("Remove the saved API key?")) return;
+  S.ai = Object.assign({}, DEFAULT.ai);
+  save(); initAIForm();
+  log("API key removed.");
+  speak("Key removed, boss.");
+}
+
+async function testAI() {
+  if (!S.ai.provider || !S.ai.key) {
+    speak("No cloud brain configured, boss. I'm running offline.");
+    log("⚠ No API key set — using offline brain.");
+    return;
+  }
+  log("Testing AI connection…");
+  $("#aiState").textContent = "testing…";
+  try {
+    const out = await aiReply("Say hello to the boss in one short, warm sentence.");
+    if (out) { log("AI says: " + out); speak(out); }
+    else { log("⚠ AI returned nothing."); speak("The brain stayed quiet, boss."); }
+  } catch (e) {
+    log("⚠ AI test failed: " + e.message);
+    speak("That connection failed, boss. Check the key.");
+  }
+  updateAIState();
+}
+
+/* =====================================================================
+   OFFLINE CONVERSATION BRAIN
+   ===================================================================== */
+const BRAIN = { userName: "", lastTopic: "", lastReply: "", lastUser: "", facts: [] };
+
+const JOKES = [
+  "Why did the developer go broke? Because he used up all his cache.",
+  "I told my computer I needed a break… now it won't stop sending me KitKat ads.",
+  "There are only two hard things in computing: cache invalidation, naming things, and off-by-one errors.",
+  "Why do Java developers wear glasses? Because they don't C#.",
+  "A SQL query walks into a bar, walks up to two tables and asks: “Can I join you?”",
+  "I'd tell you a UDP joke, but you might not get it.",
+  "Why was the JavaScript developer sad? Because he didn't know how to null his feelings.",
+  "My code doesn't have bugs. It just develops random features.",
+  "I changed my password to “incorrect”. Now the computer tells me my password is incorrect.",
+  "Why did the function stop calling the other function? It lost its arguments."
+];
+
+const QUOTES = [
+  "“Discipline is choosing between what you want now and what you want most.” — Abraham Lincoln",
+  "“The successful warrior is the average man, with laser-like focus.” — Bruce Lee",
+  "“Amateurs sit and wait for inspiration. The rest of us just get up and go to work.” — Stephen King",
+  "“You do not rise to the level of your goals. You fall to the level of your systems.” — James Clear",
+  "“It's not that I'm so smart, it's just that I stay with problems longer.” — Albert Einstein",
+  "“Do the hard jobs first. The easy jobs will take care of themselves.” — Dale Carnegie",
+  "“We are what we repeatedly do. Excellence, then, is not an act but a habit.” — Will Durant",
+  "“The best time to plant a tree was twenty years ago. The second best time is now.” — Chinese proverb"
+];
+
+const FACTS = [
+  "Octopuses have three hearts, and two of them stop beating when they swim — which is why they prefer crawling.",
+  "A day on Venus is longer than its year. It rotates that slowly.",
+  "Honey never spoils. Archaeologists have found 3,000-year-old honey in Egyptian tombs that was still edible.",
+  "The word “algorithm” comes from the name of a 9th-century Persian mathematician, al-Khwarizmi.",
+  "Bananas are berries, but strawberries technically aren't.",
+  "There are more possible chess games than there are atoms in the observable universe.",
+  "Your brain uses roughly 20% of your body's energy while being about 2% of your weight.",
+  "Sharks existed before trees did — by about 50 million years.",
+  "The first computer bug was an actual moth, found in a Harvard Mark II in 1947.",
+  "Wombat poop is cube-shaped. Nobody's entirely sure why, but it doesn't roll away."
+];
+
+const TOPICS = [
+  { id: "coding",
+    re: /\b(code|coding|program|programming|developer|javascript|python|java\b|css|html|bug|debug|software|app\b|website|api\b|react|node|database|function|algorithm|deploy)\b/,
+    lines: [
+      "Code is structured stubbornness — you keep at it until it agrees with you. What are you building?",
+      "Ah, programming. The only job where fixing one bug creates three more for free. What's on your screen right now?",
+      "If it compiles, ship it. If it doesn't, coffee. What language are we in today, boss?",
+      "The trick is almost never the code — it's the assumption you didn't question. What's misbehaving?"
+    ] },
+  { id: "work",
+    re: /\b(work|office|job|boss|client|meeting|deadline|project|career|promotion|salary|colleague)\b/,
+    lines: [
+      "Work talk. What's the actual blocker — the task, or the people around the task?",
+      "Deadlines are just pressure with a calendar attached. What's the one thing that would move this forward today?",
+      "Tell me more. Is this a “needs more hours” problem or a “needs a different approach” problem?"
+    ] },
+  { id: "study",
+    re: /\b(study|exam|college|school|university|homework|assignment|learn|learning|course|syllabus|revision)\b/,
+    lines: [
+      "Learning mode. What's the subject — and is it understanding you're missing, or just repetition?",
+      "Studying works best in short, brutal bursts. Twenty-five minutes, then walk away. What are you on right now?",
+      "Exams reward recall, not recognition. Can you explain it out loud without notes yet?"
+    ] },
+  { id: "food",
+    re: /\b(food|hungry|eat|dinner|lunch|breakfast|recipe|cook|cooking|restaurant|pizza|biryani|coffee|tea)\b/,
+    lines: [
+      "Now we're talking. What are you in the mood for — something quick, or something worth the effort?",
+      "Hungry, boss? Give me a cuisine and I'll point you somewhere sane.",
+      "The correct answer is usually biryani, but I'll let you argue."
+    ] },
+  { id: "music",
+    re: /\b(music|song|songs|playlist|spotify|album|band|artist|listen|track)\b/,
+    lines: [
+      "Music. What's the mood — focus, energy, or something to feel things to?",
+      "Drop a Spotify link in the Music panel and I'll embed it right here. What are we playing?",
+      "A good playlist is just a mood with a tracklist. What are you after?"
+    ] },
+  { id: "movie",
+    re: /\b(movie|film|series|show|netflix|watch|anime|episode|cinema)\b/,
+    lines: [
+      "What are you in the mood for — something that thinks, or something that just looks incredible?",
+      "Series or film? Because one is a commitment and the other is an evening.",
+      "Give me a genre and I'll narrow it down, boss."
+    ] },
+  { id: "health",
+    re: /\b(health|gym|workout|exercise|run|running|weight|diet|fitness|protein|steps|sleep)\b/,
+    lines: [
+      "Body stuff. Consistency beats intensity every single time. What's the plan for today?",
+      "The hardest part is the first ten minutes. After that it's just momentum. Going today?",
+      "Sleep is the cheat code nobody wants to hear about. How many hours are you getting?"
+    ] },
+  { id: "money",
+    re: /\b(money|invest|investment|stock|stocks|saving|savings|budget|finance|rich|crypto|salary)\b/,
+    lines: [
+      "Money talk. Are we optimizing what comes in, or what goes out?",
+      "The boring answer is usually the right one: spend less than you earn, and let time do the heavy lifting.",
+      "What's the goal here — a safety net, or growth?"
+    ] },
+  { id: "travel",
+    re: /\b(travel|trip|vacation|holiday|flight|hotel|visit|tour|goa|traveling|travelling)\b/,
+    lines: [
+      "Travel. Where to, and are we going for rest or for stories?",
+      "Half the joy is the planning. What's the destination, boss?",
+      "Mountains or ocean? That answer tells me everything."
+    ] },
+  { id: "tech",
+    re: /\b(ai|a\.i\.|robot|machine learning|gadget|phone|laptop|computer|tech|hardware|gpu|internet)\b/,
+    lines: [
+      "Tech talk. What caught your attention?",
+      "The pace is absurd — half of what's new this year will be boring by next. What's the angle?",
+      "Hardware or software side of it? I can go either way."
+    ] },
+  { id: "life",
+    re: /\b(life|future|purpose|meaning|dream|goal|goals|myself|who am i|direction)\b/,
+    lines: [
+      "Big question. What made you start thinking about it right now?",
+      "Most people aren't lost — they're just tired of walking. Which one is it for you today?",
+      "Purpose is usually less a discovery and more a decision. What's pulling at you?"
+    ] }
+];
+
+/* ---------- tiny helpers ---------- */
+const cap = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
+
+const STOPWORDS = new Set(("the a an and or but if then so i you he she it we they me my your his her its " +
+  "our their is are was were be been being do does did to of in on at for with about as by from that " +
+  "this these those not no yes ok okay just really very can could should would will want need know " +
+  "think feel like get got have has had am im i'm dont don't thats that's whats what's").split(" "));
+
+function keywordOf(q) {
+  const words = q.replace(/[^a-z0-9\s']/g, " ").split(/\s+/)
+    .filter(w => w.length > 3 && !STOPWORDS.has(w));
+  if (!words.length) return "";
+  words.sort((a, b) => b.length - a.length);
+  return words[0];
+}
+
+/* ---------- safe math ---------- */
+function tryMath(q) {
+  let s = " " + q + " ";
+  s = s.replace(/\bwhat(?:'s| is)\b/g, " ")
+       .replace(/\bcalculate\b|\bcompute\b|\bequals?\b|\bhow much is\b/g, " ")
+       .replace(/\bplus\b/g, "+").replace(/\bminus\b/g, "-")
+       .replace(/\btimes\b|\bmultiplied by\b|\binto\b/g, "*")
+       .replace(/\bdivided by\b|\bover\b/g, "/")
+       .replace(/[×✕x]/g, "*").replace(/÷/g, "/")
+       .replace(/\bpercent of\b/g, "% of ");
+  if (/% of/.test(s)) {
+    const m = s.match(/([\d.]+)\s*%\s*of\s*([\d.]+)/);
+    if (m) return (+m[1] / 100) * (+m[2]);
+  }
+  s = s.replace(/[^0-9+\-*/^().\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!s || !/[+\-*/^]/.test(s)) return null;
+  if (!/^[\d+\-*/^().\s]+$/.test(s)) return null;
+  try {
+    const expr = s.replace(/\^/g, "**");
+    const val = Function('"use strict";return (' + expr + ')')();
+    if (typeof val === "number" && isFinite(val)) {
+      return Math.round(val * 1e6) / 1e6;
+    }
+  } catch (e) { /* not maths */ }
+  return null;
+}
+
+/* ---------- the offline responder ---------- */
+function localReply(input) {
+  const raw = String(input).trim();
+  const q = raw.toLowerCase().replace(/\s+/g, " ");
+  const name = BRAIN.userName || "boss";
+  BRAIN.lastUser = raw;
+  const say = (s) => { BRAIN.lastReply = s; return s; };
+  let m;
+
+  /* ----- maths ----- */
+  const maths = tryMath(q);
+  if (maths !== null && /[\d]/.test(q)) {
+    return say(`${maths}. Want me to crunch anything else?`);
+  }
+
+  /* ----- learning about the user ----- */
+  m = q.match(/\b(?:my name is|call me|i am called)\s+([a-z][a-z'\- ]{1,24})$/);
+  if (m) {
+    BRAIN.userName = m[1].trim().split(" ").map(cap).join(" ");
+    return say(`Noted. I'll call you ${BRAIN.userName} from now on.`);
+  }
+  m = q.match(/\bi(?:'m| am)\s+(?:working on|building|making|creating)\s+(.{3,70})$/);
+  if (m) {
+    BRAIN.facts.push({ k: "project", v: m[1].trim() });
+    return say(`${cap(m[1].trim())} — got it. How far along are you, and what's slowing it down?`);
+  }
+  m = q.match(/\bi\s+(?:really\s+)?(?:like|love|enjoy|prefer)\s+(.{2,50})$/);
+  if (m) {
+    BRAIN.facts.push({ k: "like", v: m[1].trim() });
+    return say(`${cap(m[1].trim())}? Good taste. I'll remember that.`);
+  }
+  m = q.match(/\bi\s+(?:hate|dislike|can'?t stand)\s+(.{2,50})$/);
+  if (m) {
+    BRAIN.facts.push({ k: "dislike", v: m[1].trim() });
+    return say(`Fair enough — ${m[1].trim()} is off the table then.`);
+  }
+
+  /* ----- mood / feelings ----- */
+  m = q.match(/\bi(?:'m| am| feel| am feeling)?\s+(sad|down|depressed|low|upset|angry|mad|frustrated|stressed|anxious|worried|scared|lonely|exhausted|tired|drained|burnt out|burned out)\b/);
+  if (m) {
+    const mood = m[1];
+    if (/tired|exhausted|drained|burnt|burned/.test(mood))
+      return say("Then stop pushing for a minute, boss. Tired decisions are expensive decisions. Water, food, or sleep — pick one and take it seriously.");
+    if (/sad|down|depressed|low|lonely/.test(mood))
+      return say("That's rough, and I'm not going to pretend it isn't. You don't have to fix it this second. What's weighing on you most?");
+    if (/angry|mad|frustrated/.test(mood))
+      return say("Anger usually means something you care about got stepped on. What happened?");
+    return say("Sounds like a lot is riding on you right now. What's the loudest thing in your head?");
+  }
+  if (/\bi(?:'m| am| feel)?\s*(great|amazing|awesome|fantastic|happy|excited|good|wonderful|pumped)\b/.test(q)) {
+    return say(rnd([
+      "Love that energy, boss. Let's put it to work before it wears off — what's first?",
+      "Good. Ride it. What's the one thing you want done while you're feeling unstoppable?",
+      "That's what I like to hear. Anything you want me to line up?"
+    ]));
+  }
+  if (/\bi(?:'m| am)?\s*(bored|boring)\b/.test(q)) {
+    return say("Boredom is just an unfilled slot. Want a challenge, a fact, or a terrible joke?");
+  }
+
+  /* ----- about Sunday ----- */
+  if (/\b(who are you|what are you|your name|introduce yourself)\b/.test(q)) {
+    return say("I'm SUNDAY — your dashboard, your assistant, and the voice in this machine. I track your tasks, alarms, weather and notes, and now I can just… talk. Which is a nice upgrade, honestly.");
+  }
+  if (/\b(what can you do|help me|your capabilities|how do you work|what do you do)\b/.test(q)) {
+    return say("Plenty. I keep your schedule and alarms, pull live weather, save notes, embed Spotify, search the web, and hold a conversation. " +
+      "Try “add task call the bank”, “set alarm 7 30 am”, “what's the weather”, or just tell me how your day's going.");
+  }
+  if (/\b(are you (real|alive|conscious|human|sentient)|do you have feelings)\b/.test(q)) {
+    return say("I'm a very well-organised set of instructions with a good speaking voice. But I pay attention to you — and honestly, that's most of what a good assistant needs.");
+  }
+  if (/\b(are you (ok|okay|fine|good)|how are you|how'?s it going|how do you feel|how are things)\b/.test(q)) {
+    return say(rnd([
+      "Running clean, thanks for asking. Every process green, zero complaints. How about you, boss?",
+      "I'm good — I live in a browser tab and I get to talk to you, so no complaints. How's your day treating you?",
+      "All systems nominal on my side. More importantly, how are *you* doing?"
+    ]));
+  }
+
+  /* ----- greetings / courtesies ----- */
+  if (/^(hello|hi|hey|yo|hiya|sup|what'?s up|good (morning|afternoon|evening|night))\b/.test(q)) {
+    const h = new Date().getHours();
+    const part = h < 5 ? "Still up" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon"
+               : h < 21 ? "Good evening" : "Good night";
+    return say(`${part}, ${name}. I'm listening — what's on your mind?`);
+  }
+  if (/\b(thank you|thanks|thx|appreciate it|cheers)\b/.test(q)) {
+    return say(rnd(["Anytime, boss.", "That's what I'm here for.", "Always. What's next?"]));
+  }
+  if (/^(bye|goodbye|see you|good night|goodnight|talk later|gtg)\b/.test(q)) {
+    return say(rnd([
+      "Go rest, boss. I'll keep the lights on.",
+      "Later. Ping me when you need anything.",
+      "Good night. Everything's saved — nothing's going anywhere."
+    ]));
+  }
+  if (/\b(sorry|my bad|apolog)/.test(q)) {
+    return say("Nothing to apologise for. Where were we?");
+  }
+  if (/\b(i love you|love you|you'?re the best|you are amazing|good job|well done)\b/.test(q)) {
+    return say(rnd([
+      "Careful, boss — I'll start expecting a raise.",
+      "Appreciated. Now let's do something worth the compliment.",
+      "That's kind. I'll try to keep earning it."
+    ]));
+  }
+  if (/\b(you'?re (stupid|dumb|useless|wrong|bad)|shut up)\b/.test(q)) {
+    return say(rnd([
+      "Fair. Point me at what I got wrong and I'll fix it.",
+      "Noted — I'll do better. What did I miss?",
+      "Harsh, but I've been called worse by better code."
+    ]));
+  }
+
+  /* ----- jokes / facts / quotes ----- */
+  if (/\b(joke|funny|make me laugh|something funny)\b/.test(q)) {
+    return say(rnd(JOKES) + " …Anyway. What else?");
+  }
+  if (/\b(fact|something interesting|tell me something|did you know|random)\b/.test(q)) {
+    return say(rnd(FACTS) + "  Want another?");
+  }
+  if (/\b(quote|motivat|inspir|encourage|pump me up|pep talk|cheer me up)\b/.test(q)) {
+    return say(rnd(QUOTES) + "\n\nNow — what's the smallest next step you can take in the next ten minutes?");
+  }
+  if (/\b(story|tell me a story|bedtime)\b/.test(q)) {
+    return say("Once, a developer shipped on a Friday. That's it. That's the whole horror story.  Want a real one?");
+  }
+  if (/\b(sing|song for me)\b/.test(q)) {
+    return say("I'd sing, but my voice synthesis has standards. I'll stick to talking.");
+  }
+
+  /* ----- advice / planning ----- */
+  if (/\b(what should i (do|focus on|work on)|plan my day|where do i start|help me plan|prioriti)\b/.test(q)) {
+    const open = S.tasks.filter(t => !t.done);
+    if (open.length) {
+      return say("Here's your board, boss: " + open.slice(0, 4).map(t => "“" + t.text + "”").join(", ") +
+        ". I'd start with the one you're most tempted to avoid — that's usually the one holding everything else up. Which one is it?");
+    }
+    return say("Your list is empty, so start by naming three things: one that must happen, one that should, and one you'd enjoy. Tell me the first and I'll add it.");
+  }
+  if (/\b(should i|do you think i should|what do you think about|any advice)\b/.test(q)) {
+    const kw = keywordOf(q);
+    return say(`My honest take${kw ? " on " + kw : ""}: you already lean one way, and you're asking me to make it feel safer. ` +
+      "Tell me the two options and what you're actually afraid of losing — then it'll be obvious.");
+  }
+
+  /* ----- questions we can't truly answer ----- */
+  if (/^(what|why|how|when|where|who|which|is|are|can|does|do|did|will|would|should)\b/.test(q) && /\?/.test(raw)) {
+    const kw = keywordOf(q);
+    if (/\b(meaning of life|purpose of life)\b/.test(q)) {
+      return say("Forty-two, allegedly. In practice I think it's whatever you'd still get up for if nobody was watching. What's yours?");
+    }
+    if (kw) {
+      return say(rnd([
+        `Good question. On ${kw} specifically — I'd want to know what you already suspect before I answer. What's your instinct?`,
+        `${cap(kw)} is one of those things where the framing matters more than the answer. What's the context, boss?`,
+        `I can take a swing at ${kw}, but tell me a bit more first — is this practical, or are you just chewing on it?`
+      ]));
+    }
+    return say("Good question. Give me a bit more context and I'll give you a real answer instead of a generic one.");
+  }
+
+  /* ----- topic matching ----- */
+  for (const t of TOPICS) {
+    if (t.re.test(q)) {
+      BRAIN.lastTopic = t.id;
+      return say(rnd(t.lines));
+    }
+  }
+
+  /* ----- continuation requests ----- */
+  if (/\b(tell me more|go on|continue|elaborate|why|and then|more)\b/.test(q) && BRAIN.lastReply) {
+    const kw = keywordOf(BRAIN.lastUser);
+    return say(rnd([
+      `Alright, expanding${kw ? " on " + kw : ""}. The short version is: it matters less what you decide and more that you decide it deliberately. What part do you want me to dig into?`,
+      "Sure. Here's the longer angle: most of these things break down into what you control and what you don't. " +
+        "The useful move is to spend your energy entirely on the first list. Which side is this on for you?",
+      "Let me put it differently — what would you tell a friend in exactly your situation? That answer is usually the one you're avoiding."
+    ]));
+  }
+
+  /* ----- final fallback: reflective conversation ----- */
+  const kw = keywordOf(q);
+  const short = q.split(/\s+/).length <= 3;
+
+  if (short) {
+    return say(rnd([
+      `“${raw}” — go on.`,
+      "I'm with you. Expand on that a bit?",
+      "Noted. What's the context behind it?"
+    ]));
+  }
+  if (kw) {
+    return say(rnd([
+      `So this is about ${kw}. What's the part that's actually bothering you?`,
+      `${cap(kw)} — okay. What made that come up right now?`,
+      `I'm following. Tell me more about the ${kw} side of it.`,
+      `Makes sense. And how do you feel about the ${kw} part specifically?`
+    ]));
+  }
+  return say(rnd([
+    "I'm listening, boss. Keep going — say it however it comes out.",
+    "Understood. What's the piece you haven't said out loud yet?",
+    "Alright. What do you want to do about it?",
+    "Got it. And what would “good” look like here?"
+  ]));
 }
 
 /* =====================================================================
@@ -892,7 +1625,6 @@ function openSpotifyApp() {
   const url = $("#spotifyUrl").value.trim() || S.spotify || "";
   window.open(url || "https://open.spotify.com", "_blank");
   log("Spotify opened.");
-  speak("Opening Spotify, boss.");
 }
 
 function webSearch(engine) {
@@ -930,7 +1662,9 @@ function importData(input) {
       if (!parsed || typeof parsed !== "object") throw new Error("bad file");
       S = Object.assign(JSON.parse(JSON.stringify(DEFAULT)), parsed);
       S.settings = Object.assign({}, DEFAULT.settings, parsed.settings || {});
-      save(); renderAll(); loadNotes();
+      S.ai       = Object.assign({}, DEFAULT.ai, parsed.ai || {});
+      S.chat     = Array.isArray(parsed.chat) ? parsed.chat.slice(-80) : [];
+      save(); renderAll(); loadNotes(); renderChat(); initAIForm();
       log("Backup restored.");
       speak("Data restored, boss.");
     } catch (e) {
@@ -951,6 +1685,7 @@ function systemCheck() {
     `Clock OK · ${new Date().toLocaleTimeString()}`,
     `Tasks: ${S.tasks.length} · Alarms: ${S.alarms.length}`,
     `Weather: ${$("#temp").textContent} ${$("#condition").textContent}`,
+    `Brain: ${(S.ai.provider && S.ai.key) ? S.ai.provider + " / " + (S.ai.model || "default") : "offline (local)"}`,
     `Voice: ${"speechSynthesis" in window ? (chosenVoice ? chosenVoice.name : "default") : "unsupported"}`,
     `Speech input: ${(window.SpeechRecognition || window.webkitSpeechRecognition) ? "available" : "unsupported"}`,
     `Notifications: ${("Notification" in window) ? Notification.permission : "unsupported"}`,
@@ -980,6 +1715,7 @@ window.addEventListener("offline", () => { updateStatus(); log("Network: offline
 function renderAll() {
   renderTasks();
   renderAlarms();
+  renderChat();
 }
 
 function init() {
@@ -1000,6 +1736,7 @@ function init() {
 
   renderAll();
   loadNotes();
+  initAIForm();
 
   // saved spotify embed
   if (S.spotify) { $("#spotifyUrl").value = S.spotify; const e = spotifyEmbed(S.spotify);
@@ -1019,7 +1756,16 @@ function init() {
   setInterval(tick, 1000);
 
   updateStatus();
-  log("SUNDAY v2 initialized. Welcome back, boss.");
+  log("SUNDAY v2.1 initialized. Conversational core online. Welcome back, boss.");
+
+  // greet once, gently
+  setTimeout(() => {
+    if (!S.chat.length) {
+      pushChat("assistant",
+        "I'm up, boss. Talk to me like a person — ask me anything, think out loud, " +
+        "or just tell me what kind of day you're having. I'll keep up.");
+    }
+  }, 700);
 }
 
 init();
