@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#080808">
+<meta name="description" content="SUNDAY — personal command dashboard: clock, weather, tasks, alarms, notes, voice assistant.">
+<title>SUNDAY — Personal Command Dashboard</title>
+<style>
+:root{
+  --bg:#070707;--panel:#101010;--panel2:#151515;--orange:#ff8a00;--yellow:#ffd54a;
+  --text:#f5f5f5;--muted:#9b9b9b;--line:#282828;--green:#8cff9b;--red:#ff6b6b;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;color:var(--text);font-family:Inter,"Segoe UI",system-ui,Arial,sans-serif;
+  background:radial-gradient(circle at 80% 0%,#2b1800 0,#0a0a0a 32%,#050505 70%);
+  background-attachment:fixed;min-height:100vh;-webkit-text-size-adjust:100%;
+}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.app{max-width:1450px;margin:auto;padding:22px;padding-bottom:40px}
+
+/* ---------- header ---------- */
+.top{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:20px}
+.brand{display:flex;align-items:center;gap:14px}
+.orb{width:48px;height:48px;border-radius:50%;flex:0 0 auto;
+  background:radial-gradient(circle at 35% 30%,#fff0a0,#ff9d00 35%,#d84d00 70%,#111);
+  box-shadow:0 0 35px #ff850055;animation:pulse 4s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 55px #ff850088}}
+.brand h1{margin:0;letter-spacing:5px;font-size:28px}
+.brand small{color:var(--muted)}
+.status{padding:8px 14px;border:1px solid #3a260f;border-radius:20px;color:var(--yellow);
+  background:#120d06;font-size:13px;white-space:nowrap}
+.status.off{color:var(--red);border-color:#3a1a1a;background:#120808}
+
+/* ---------- grid ---------- */
+.grid{display:grid;grid-template-columns:1.25fr .9fr .9fr;gap:16px;align-items:start}
+.card{background:linear-gradient(145deg,#111,#0b0b0b);border:1px solid var(--line);
+  border-radius:18px;padding:20px;box-shadow:0 15px 40px #0008}
+.wide{grid-column:span 2}
+.full{grid-column:1/-1}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:2px;margin:0 0 15px;
+  color:var(--yellow);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.card h2 .tag{font-size:10px;letter-spacing:1px;color:var(--muted);text-transform:none}
+
+/* ---------- command center ---------- */
+.clock{font-size:58px;font-weight:700;letter-spacing:2px;line-height:1;font-variant-numeric:tabular-nums}
+.date{color:var(--muted);margin-top:6px}
+.greeting{font-size:19px;margin-top:18px;line-height:1.4}
+.accent{color:var(--orange);font-weight:600}
+.controls{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ---------- buttons / inputs ---------- */
+.btn{border:1px solid #4b3518;background:#16110a;color:#fff;padding:10px 13px;
+  border-radius:10px;transition:.15s;line-height:1.2}
+.btn:hover{border-color:var(--orange);box-shadow:0 0 15px #ff8a0022}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:linear-gradient(135deg,#ff9d00,#e05b00);color:#080808;font-weight:700;border-color:#ff9d00}
+.btn.danger{border-color:#552020;color:#ffb3b3}
+.btn.danger:hover{border-color:var(--red);box-shadow:0 0 15px #ff000022}
+.btn.mic{border-radius:50%;width:44px;height:44px;font-size:18px;padding:0;display:grid;place-items:center}
+.btn.mic.on{background:#3a0d0d;border-color:var(--red);animation:pulse 1s infinite}
+.inputrow{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.inputrow input,.inputrow textarea,.inputrow select{
+  flex:1;min-width:120px;background:#080808;color:#fff;border:1px solid var(--line);
+  border-radius:10px;padding:11px;outline:none;transition:.15s}
+.inputrow input:focus,.inputrow textarea:focus,.inputrow select:focus{border-color:var(--orange);box-shadow:0 0 0 3px #ff8a0015}
+.inputrow .btn{flex:0 0 auto}
+textarea{min-height:110px;resize:vertical;width:100%;background:#080808;border:1px solid var(--line);
+  border-radius:10px;padding:12px;outline:none;line-height:1.5}
+textarea:focus{border-color:var(--orange)}
+select.btn{padding:10px;max-width:190px}
+
+/* ---------- weather ---------- */
+.weather-main{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.temp{font-size:46px;font-weight:700;line-height:1}
+.weather-icon{font-size:44px}
+.muted{color:var(--muted)}
+.tiny{font-size:12px;line-height:1.5}
+
+/* ---------- tasks / alarms ---------- */
+.schedule{display:flex;flex-direction:column;gap:10px;max-height:400px;overflow:auto;padding-right:4px}
+.task{display:grid;grid-template-columns:80px 1fr auto;gap:12px;align-items:center;
+  padding:12px;border:1px solid var(--line);border-radius:12px;background:#0c0c0c;transition:.15s}
+.task:hover{border-color:#3a3a3a}
+.task.done{opacity:.45}
+.task.done span.name{text-decoration:line-through}
+.task time{color:var(--orange);font-weight:700;font-size:14px;font-variant-numeric:tabular-nums}
+.task span.name{overflow-wrap:anywhere}
+.taskbtns{display:flex;gap:6px}
+.taskbtns .btn{padding:7px 10px}
+.empty{color:var(--muted);font-size:13px;padding:8px 2px}
+.counter{font-size:11px;color:var(--muted);letter-spacing:1px}
+
+/* ---------- media ---------- */
+.music iframe{width:100%;border:0;border-radius:12px;margin-bottom:10px}
+.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.quick button{min-height:62px}
+
+/* ---------- console ---------- */
+.console{background:#050505;border:1px solid #252525;border-radius:12px;padding:12px;
+  height:160px;overflow:auto;font:12px/1.6 Consolas,"Courier New",monospace;color:#a9ffb1}
+.console div{white-space:pre-wrap;overflow-wrap:anywhere}
+.footer{text-align:center;color:#555;font-size:11px;padding:22px 10px}
+
+/* ---------- misc ---------- */
+.voice{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.toggle{accent-color:var(--orange);width:18px;height:18px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:8px}
+::-webkit-scrollbar-thumb:hover{background:#3a3a3a}
+
+@media(max-width:1000px){
+  .grid{grid-template-columns:1fr 1fr}
+  .wide{grid-column:1/-1}
+  .quick{grid-template-columns:1fr 1fr}
+}
+@media(max-width:650px){
+  .app{padding:12px}
+  .grid{grid-template-columns:1fr}
+  .wide,.full{grid-column:auto}
+  .clock{font-size:42px}
+  .brand h1{font-size:22px}
+  .brand small{display:none}
+  .orb{width:40px;height:40px}
+  .task{grid-template-columns:64px 1fr auto;gap:8px;padding:10px}
+  .card{padding:16px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <div class="brand">
+      <div class="orb"></div>
+      <div><h1>SUNDAY</h1><small>Personal Command Dashboard</small></div>
+    </div>
+    <div class="status" id="status">● ONLINE</div>
+  </header>
+
+  <main class="grid">
+
+    <!-- ============ COMMAND CENTER ============ -->
+    <section class="card wide">
+      <h2>Command Center <span class="tag" id="uptime"></span></h2>
+      <div class="clock" id="clock">--:--:--</div>
+      <div class="date" id="date">---</div>
+      <div class="greeting" id="greeting">Good day, <span class="accent">ADITYA VARMA</span>. What are we doing today, boss?</div>
+      <div class="controls" style="margin-top:18px">
+        <button class="btn primary" onclick="wake()">🔊 Wake Sunday</button>
+        <button class="btn mic" id="micBtn" onclick="listen()" title="Voice command">🎙️</button>
+        <button class="btn" onclick="quickAdd()">＋ Quick Task</button>
+        <button class="btn" onclick="clearDone()">Clear Done</button>
+      </div>
+    </section>
+
+    <!-- ============ WEATHER ============ -->
+    <section class="card">
+      <h2>Weather <span class="tag" id="wplace"></span></h2>
+      <div class="weather-main">
+        <div>
+          <div class="temp" id="temp">--°</div>
+          <div id="condition" class="muted">Locating…</div>
+        </div>
+        <div class="weather-icon" id="wicon">🌤️</div>
+      </div>
+      <div class="muted tiny" id="wmeta" style="margin-top:8px">—</div>
+      <div class="inputrow" style="margin-top:12px;margin-bottom:0">
+        <input id="cityInput" placeholder="City (e.g. Hyderabad)"
+               onkeydown="if(event.key==='Enter')searchCity(this.value)">
+        <button class="btn" onclick="searchCity(document.getElementById('cityInput').value)">Set</button>
+        <button class="btn" onclick="locateMe()" title="Use my current location">📍</button>
+      </div>
+    </section>
+
+    <!-- ============ SCHEDULE ============ -->
+    <section class="card wide">
+      <h2>Today's Schedule <span class="tag" id="taskCounter"></span></h2>
+      <div class="inputrow">
+        <input id="taskText" placeholder="What needs to be done, boss?"
+               onkeydown="if(event.key==='Enter')addTask()">
+        <input id="taskTime" type="time" style="max-width:140px;flex:0 0 auto">
+        <button class="btn primary" onclick="addTask()">Add</button>
+      </div>
+      <div class="schedule" id="schedule"></div>
+    </section>
+
+    <!-- ============ ALARMS ============ -->
+    <section class="card">
+      <h2>Alarms &amp; Reminders</h2>
+      <div class="inputrow">
+        <input id="alarmTime" type="time" style="flex:0 0 120px">
+        <input id="alarmLabel" placeholder="Reminder" onkeydown="if(event.key==='Enter')addAlarm()">
+        <button class="btn primary" onclick="addAlarm()">Set</button>
+      </div>
+      <div class="row" style="margin-bottom:12px">
+        <button class="btn" onclick="enableAlerts()">🔔 Enable alerts</button>
+        <button class="btn" onclick="testAlert()">Test</button>
+      </div>
+      <div id="alarms"></div>
+      <div class="muted tiny" style="margin-top:10px">
+        Keep this page open (or pinned) for alarms to fire. They persist in this browser.
+      </div>
+    </section>
+
+    <!-- ============ VOICE ============ -->
+    <section class="card">
+      <h2>Voice</h2>
+      <div class="voice">
+        <label class="row" style="gap:8px">
+          <input class="toggle" type="checkbox" id="voiceToggle" onchange="S.settings.voiceOn=this.checked;save()">
+          <span>Sunday speaks</span>
+        </label>
+      </div>
+      <div class="inputrow" style="margin-top:12px">
+        <select id="voiceSelect" class="btn" onchange="pickVoice(this.value)"></select>
+      </div>
+      <div class="controls">
+        <button class="btn" onclick="speak('I am listening, boss.')">Test voice</button>
+        <button class="btn" onclick="speechSynthesis.cancel()">Silence</button>
+      </div>
+      <div class="muted tiny" style="margin-top:10px">
+        Say things like: “add task buy groceries”, “what's the weather”,
+        “open spotify”, “set alarm 7:30 am”, “search for best laptops”.
+      </div>
+    </section>
+
+    <!-- ============ MEDIA ============ -->
+    <section class="card music">
+      <h2>Music &amp; Web</h2>
+      <div class="inputrow">
+        <input id="spotifyUrl" placeholder="Paste Spotify playlist / track URL"
+               onkeydown="if(event.key==='Enter')loadSpotify()">
+        <button class="btn primary" onclick="loadSpotify()">Load</button>
+      </div>
+      <div id="spotifyWrap"></div>
+      <div class="inputrow">
+        <input id="searchInput" placeholder="Search the web…"
+               onkeydown="if(event.key==='Enter')webSearch('google')">
+        <button class="btn" onclick="webSearch('google')">Google</button>
+        <button class="btn" onclick="webSearch('youtube')">YouTube</button>
+      </div>
+      <div class="quick">
+        <button class="btn" onclick="window.open('https://open.spotify.com','_blank')">🎵 Spotify</button>
+        <button class="btn" onclick="window.open('https://www.youtube.com','_blank')">▶ YouTube</button>
+        <button class="btn" onclick="window.open('https://calendar.google.com','_blank')">📅 Calendar</button>
+        <button class="btn" onclick="window.open('https://mail.google.com','_blank')">✉ Gmail</button>
+      </div>
+    </section>
+
+    <!-- ============ NOTES ============ -->
+    <section class="card">
+      <h2>Boss Notes <span class="tag" id="noteState"></span></h2>
+      <textarea id="notes" placeholder="Ideas, reminders, things Sunday should remember…"
+                oninput="noteDirty()"></textarea>
+      <div class="controls" style="margin-top:10px">
+        <button class="btn primary" onclick="saveNotes()">Save</button>
+        <button class="btn" onclick="loadNotes()">Reload</button>
+        <button class="btn danger" onclick="clearNotes()">Clear</button>
+      </div>
+    </section>
+
+    <!-- ============ QUICK ACTIONS ============ -->
+    <section class="card wide">
+      <h2>Quick Actions</h2>
+      <div class="quick">
+        <button class="btn" onclick="systemCheck()">⚡ System Check</button>
+        <button class="btn" onclick="document.getElementById('taskText').focus()">📋 Plan Day</button>
+        <button class="btn" onclick="testAlert()">🔔 Test Alert</button>
+        <button class="btn" onclick="listen()">🎙️ Voice Command</button>
+        <button class="btn" onclick="refreshWeather()">🌦️ Refresh Weather</button>
+        <button class="btn" onclick="exportData()">💾 Backup Data</button>
+        <button class="btn" onclick="document.getElementById('importFile').click()">📥 Restore Data</button>
+        <button class="btn" onclick="location.reload()">↻ Refresh App</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json" hidden onchange="importData(this)">
+    </section>
+
+    <!-- ============ CONSOLE ============ -->
+    <section class="card full">
+      <h2>Sunday Console <span class="tag"><button class="btn" style="padding:4px 9px;font-size:11px" onclick="document.getElementById('console').innerHTML=''">clear</button></span></h2>
+      <div class="console" id="console"></div>
+    </section>
+
+  </main>
+
+  <div class="footer">SUNDAY v2 · Local-first dashboard · All data stored privately in this browser</div>
+</div>
+
+<script>
+"use strict";
+/* =====================================================================
+   SUNDAY — Personal Command Dashboard
+   Single file · No build step · Deploy on GitHub Pages
+   ===================================================================== */
+
+const $  = (s) => document.querySelector(s);
+const pad = (n) => String(n).padStart(2, "0");
+const uid = () => (crypto.randomUUID ? crypto.randomUUID()
+                 : Date.now().toString(36) + Math.random().toString(36).slice(2));
+const esc = (x) => String(x).replace(/[&<>"']/g, m =>
+  ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[m]));
+
+const ICON = "data:image/svg+xml;utf8," + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+  '<defs><radialGradient id="g" cx="35%" cy="30%">' +
+  '<stop offset="0" stop-color="#fff0a0"/><stop offset=".35" stop-color="#ff9d00"/>' +
+  '<stop offset=".7" stop-color="#d84d00"/><stop offset="1" stop-color="#111"/>' +
+  '</radialGradient></defs><rect width="64" height="64" rx="14" fill="#080808"/>' +
+  '<circle cx="32" cy="32" r="18" fill="url(#g)"/></svg>');
+
+/* ---------- state ---------- */
+const KEY = "sunday_v2";
+const DEFAULT = {
+  tasks: [], alarms: [], notes: "", spotify: "", city: null,
+  settings: { voiceOn: true, voiceName: "" }
+};
+let S = loadState();
+
+function loadState() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY) || "{}");
+    const merged = Object.assign(JSON.parse(JSON.stringify(DEFAULT)), raw);
+    merged.settings = Object.assign({}, DEFAULT.settings, raw.settings || {});
+    merged.tasks  = (raw.tasks  || []).map(t => ({ id: t.id || uid(), text: t.text || "", time: t.time || "", done: !!t.done }));
+    merged.alarms = (raw.alarms || []).map(a => ({ id: a.id || uid(), time: a.time || "", label: a.label || "Reminder", lastFired: a.lastFired || "" }));
+    return merged;
+  } catch (e) { return JSON.parse(JSON.stringify(DEFAULT)); }
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(S)); }
+  catch (e) { log("⚠ Storage error: " + e.message); }
+}
+
+/* ---------- console ---------- */
+function log(msg) {
+  const c = $("#console");
+  const line = document.createElement("div");
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  c.appendChild(line);
+  while (c.childElementCount > 200) c.removeChild(c.firstChild);
+  c.scrollTop = c.scrollHeight;
+}
+
+/* ---------- clock ---------- */
+const startedAt = Date.now();
+function tick() {
+  const d = new Date();
+  $("#clock").textContent = d.toLocaleTimeString("en-GB", { hour12: false });
+  $("#date").textContent  = d.toLocaleDateString(undefined,
+    { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+  const h = d.getHours();
+  const part = h < 5 ? "Burning the midnight oil" : h < 12 ? "Good morning"
+             : h < 17 ? "Good afternoon" : h < 21 ? "Good evening" : "Good night";
+  $("#greeting").innerHTML =
+    `${part}, <span class="accent">ADITYA VARMA</span>. ` +
+    `What are we doing today, boss?`;
+
+  const mins = Math.floor((Date.now() - startedAt) / 60000);
+  $("#uptime").textContent = mins < 1 ? "" : `session ${mins}m`;
+
+  checkAlarms(d);
+}
+
+/* =====================================================================
+   TASKS
+   ===================================================================== */
+function renderTasks() {
+  const box = $("#schedule");
+  const list = [...S.tasks].sort((a, b) =>
+    (a.time || "99:99").localeCompare(b.time || "99:99"));
+
+  if (!list.length) {
+    box.innerHTML = '<div class="empty">No tasks yet, boss. Add one above or tap 🎙️ and say “add task …”.</div>';
+  } else {
+    box.innerHTML = list.map(t => `
+      <div class="task ${t.done ? "done" : ""}">
+        <time>${t.time ? esc(t.time) : "--:--"}</time>
+        <span class="name">${esc(t.text)}</span>
+        <span class="taskbtns">
+          <button class="btn" data-act="toggle" data-id="${t.id}" title="Toggle">${t.done ? "↩" : "✓"}</button>
+          <button class="btn danger" data-act="del" data-id="${t.id}" title="Delete">✕</button>
+        </span>
+      </div>`).join("");
+  }
+  const done = S.tasks.filter(t => t.done).length;
+  $("#taskCounter").textContent = S.tasks.length ? `${done}/${S.tasks.length} done` : "";
+}
+
+$("#schedule").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const i = S.tasks.findIndex(t => t.id === id);
+  if (i < 0) return;
+  if (btn.dataset.act === "toggle") {
+    S.tasks[i].done = !S.tasks[i].done;
+    if (S.tasks[i].done) speak("Done. Nice work, boss.");
+  } else {
+    log("Task removed: " + S.tasks[i].text);
+    S.tasks.splice(i, 1);
+  }
+  save(); renderTasks();
+});
+
+function addTask(text, time) {
+  text = (text !== undefined ? text : $("#taskText").value).trim();
+  time = (time !== undefined ? time : $("#taskTime").value);
+  if (!text) { $("#taskText").focus(); return; }
+  S.tasks.push({ id: uid(), text, time: time || "", done: false });
+  $("#taskText").value = ""; $("#taskTime").value = "";
+  save(); renderTasks();
+  log("Task added: " + text + (time ? " @ " + time : ""));
+  speak("Task added, boss.");
+}
+
+function quickAdd() {
+  $("#taskText").value = "Work on SUNDAY dashboard";
+  $("#taskTime").value = "20:00";
+  $("#taskText").focus();
+}
+
+function clearDone() {
+  const n = S.tasks.filter(t => t.done).length;
+  S.tasks = S.tasks.filter(t => !t.done);
+  save(); renderTasks();
+  log(n ? `Cleared ${n} completed task(s).` : "Nothing completed to clear.");
+  if (n) speak(`${n} completed task${n > 1 ? "s" : ""} cleared, boss.`);
+}
+
+/* =====================================================================
+   ALARMS
+   ===================================================================== */
+function renderAlarms() {
+  const box = $("#alarms");
+  if (!S.alarms.length) { box.innerHTML = '<div class="empty">No alarms set.</div>'; return; }
+  box.innerHTML = [...S.alarms]
+    .sort((a, b) => a.time.localeCompare(b.time))
+    .map(a => `
+      <div class="task" style="grid-template-columns:70px 1fr auto;margin-bottom:7px">
+        <time>${esc(a.time)}</time>
+        <span class="name">${esc(a.label)}</span>
+        <button class="btn danger" data-del="${a.id}">✕</button>
+      </div>`).join("");
+}
+
+$("#alarms").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-del]");
+  if (!btn) return;
+  S.alarms = S.alarms.filter(a => a.id !== btn.dataset.del);
+  save(); renderAlarms(); log("Alarm deleted.");
+});
+
+function addAlarm(time, label) {
+  time  = time  !== undefined ? time  : $("#alarmTime").value;
+  label = (label !== undefined ? label : $("#alarmLabel").value).trim() || "Reminder";
+  if (!time) { $("#alarmTime").focus(); return; }
+  S.alarms.push({ id: uid(), time, label, lastFired: "" });
+  $("#alarmTime").value = ""; $("#alarmLabel").value = "";
+  save(); renderAlarms();
+  log(`Alarm set: ${time} — ${label}`);
+  notify("Alarm set for " + time);
+  speak("Alarm set for " + time + ", boss.");
+}
+
+function checkAlarms(d) {
+  const hm = pad(d.getHours()) + ":" + pad(d.getMinutes());
+  const today = d.toDateString();
+  S.alarms.forEach(a => {
+    if (a.time === hm && a.lastFired !== today) {
+      a.lastFired = today;
+      save();
+      fireAlarm(a);
+    }
+  });
+}
+
+function fireAlarm(a) {
+  log("⏰ ALARM: " + a.label);
+  notify(a.label);
+  beep(4);
+  speak(a.label + ", boss.");
+}
+
+/* ---------- sound ---------- */
+let audioCtx = null;
+function beep(times = 3) {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    let t = audioCtx.currentTime;
+    for (let i = 0; i < times; i++) {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = "sine"; o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t); o.stop(t + 0.4);
+      t += 0.5;
+    }
+  } catch (e) { /* audio blocked until user gesture */ }
+}
+
+/* ---------- notifications ---------- */
+async function enableAlerts() {
+  if (!("Notification" in window)) { log("⚠ Notifications not supported here."); return; }
+  const p = await Notification.requestPermission();
+  log("Notification permission: " + p);
+  if (p === "granted") { notify("Alerts enabled, boss."); speak("Alerts enabled, boss."); }
+}
+
+function notify(body) {
+  try {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    new Notification("SUNDAY", { body, icon: ICON, badge: ICON, tag: "sunday" });
+  } catch (e) { /* ignore */ }
+}
+
+function testAlert() {
+  notify("Sunday test notification — all good, boss.");
+  beep(1);
+  log("Test alert fired.");
+  speak("Test alert. All systems nominal, boss.");
+}
+
+/* =====================================================================
+   NOTES
+   ===================================================================== */
+function noteDirty() { $("#noteState").textContent = "unsaved…"; }
+function saveNotes() {
+  S.notes = $("#notes").value;
+  save();
+  $("#noteState").textContent = "saved";
+  log("Notes saved.");
+  speak("Notes saved, boss.");
+}
+function loadNotes() {
+  $("#notes").value = S.notes || "";
+  $("#noteState").textContent = "";
+}
+function clearNotes() {
+  if (!confirm("Clear all notes?")) return;
+  S.notes = ""; save(); loadNotes(); log("Notes cleared.");
+}
+
+/* =====================================================================
+   VOICE OUTPUT
+   ===================================================================== */
+let voices = [];
+let chosenVoice = null;
+
+function loadVoices() {
+  if (!("speechSynthesis" in window)) return;
+  voices = speechSynthesis.getVoices() || [];
+  const sel = $("#voiceSelect");
+  const current = S.settings.voiceName || chosenVoice?.name || "";
+
+  const sorted = [...voices].sort((a, b) => {
+    const ae = /^en/i.test(a.lang) ? 0 : 1, be = /^en/i.test(b.lang) ? 0 : 1;
+    return ae - be || a.name.localeCompare(b.name);
+  });
+
+  sel.innerHTML = '<option value="">Auto (best female)</option>' +
+    sorted.map(v => `<option value="${esc(v.name)}">${esc(v.name)} · ${esc(v.lang)}</option>`).join("");
+
+  if (current && voices.some(v => v.name === current)) {
+    sel.value = current;
+    chosenVoice = voices.find(v => v.name === current);
+  } else {
+    chosenVoice = pickBestVoice();
+  }
+}
+
+const FEMALE_RE = /samantha|zira|aria|jenny|jennifer|michelle|ana|clara|female|heera|veena|raveena|tessa|karen|moira|fiona|serena|allison|ava|susan|google uk english female|google us english|neerja|swara/i;
+
+function pickBestVoice() {
+  if (!voices.length) return null;
+  const en = voices.filter(v => /^en/i.test(v.lang));
+  const pool = en.length ? en : voices;
+  return pool.find(v => /^en[-_]IN/i.test(v.lang) && FEMALE_RE.test(v.name))
+      || pool.find(v => FEMALE_RE.test(v.name) && /^en[-_]US/i.test(v.lang))
+      || pool.find(v => FEMALE_RE.test(v.name))
+      || pool.find(v => /^en/i.test(v.lang))
+      || pool[0];
+}
+
+function pickVoice(name) {
+  chosenVoice = voices.find(v => v.name === name) || pickBestVoice();
+  S.settings.voiceName = name || "";
+  save();
+  log("Voice: " + (chosenVoice ? chosenVoice.name : "default"));
+  speak("Voice updated, boss.");
+}
+
+function speak(msg) {
+  if (!("speechSynthesis" in window)) return;
+  if (!S.settings.voiceOn) return;
+  if (!document.getElementById("voiceToggle")?.checked) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(String(msg));
+    const v = chosenVoice || pickBestVoice();
+    if (v) u.voice = v;
+    u.lang = v?.lang || "en-IN";
+    u.rate = 0.97; u.pitch = 1.06; u.volume = 1;
+    speechSynthesis.speak(u);
+  } catch (e) { /* ignore */ }
+}
+
+function wake() {
+  beep(1);
+  speak("Good day, boss. Sunday is ready.");
+  log("Sunday woken up.");
+}
+
+/* =====================================================================
+   VOICE INPUT
+   ===================================================================== */
+let recognizer = null, listening = false;
+
+function listen() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    alert("Voice input isn't supported in this browser. Try Chrome, Edge or Safari.");
+    log("⚠ Speech recognition unsupported.");
+    return;
+  }
+  if (listening) { try { recognizer.stop(); } catch (e) {} return; }
+
+  recognizer = new SR();
+  recognizer.lang = "en-IN";
+  recognizer.interimResults = false;
+  recognizer.maxAlternatives = 1;
+  recognizer.continuous = false;
+
+  recognizer.onstart = () => {
+    listening = true;
+    $("#micBtn").classList.add("on");
+    $("#status").textContent = "● LISTENING";
+    log("Listening…");
+    beep(1);
+  };
+  recognizer.onresult = (e) => {
+    const q = e.results[0][0].transcript;
+    handleCommand(q);
+  };
+  recognizer.onerror = (e) => {
+    log("⚠ Voice error: " + e.error);
+    if (e.error === "not-allowed") alert("Microphone permission is required for voice commands.");
+  };
+  recognizer.onend = () => {
+    listening = false;
+    $("#micBtn").classList.remove("on");
+    updateStatus();
+  };
+  try { recognizer.start(); } catch (e) { log("⚠ " + e.message); }
+}
+
+/* ---------- command brain ---------- */
+function handleCommand(raw) {
+  const q = String(raw).toLowerCase().trim();
+  log("Heard: " + raw);
+
+  // stop
+  if (/\b(stop|quiet|silence|shut up|cancel)\b/.test(q)) {
+    speechSynthesis.cancel(); log("Speech stopped."); return;
+  }
+  // time
+  if (/\b(what('s| is)? the )?time\b/.test(q)) {
+    const t = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    speak("It is " + t + ", boss."); log("Answered time."); return;
+  }
+  // date
+  if (/\b(what('s| is)? the )?date\b|\bwhat day\b/.test(q)) {
+    speak("Today is " + new Date().toLocaleDateString(undefined,
+      { weekday: "long", day: "numeric", month: "long" }) + ", boss.");
+    return;
+  }
+  // weather
+  if (/weather|temperature|forecast|how hot|how cold/.test(q)) {
+    speak("It is currently " + $("#temp").textContent + " and " +
+          $("#condition").textContent + " in " + ($("#wplace").textContent || "your area") + ", boss.");
+    return;
+  }
+  // spotify
+  if (/spotify/.test(q)) { openSpotifyApp(); return; }
+  // youtube
+  if (/youtube/.test(q)) {
+    window.open("https://www.youtube.com", "_blank");
+    speak("Opening YouTube, boss."); return;
+  }
+  // calendar / mail
+  if (/calendar|schedule app/.test(q)) {
+    window.open("https://calendar.google.com", "_blank");
+    speak("Opening your calendar, boss."); return;
+  }
+  if (/gmail|email|mail/.test(q)) {
+    window.open("https://mail.google.com", "_blank");
+    speak("Opening Gmail, boss."); return;
+  }
+  // search
+  let m = q.match(/^(?:search|google|look up|find)\s+(?:for\s+)?(.+)$/);
+  if (m) {
+    window.open("https://www.google.com/search?q=" + encodeURIComponent(m[1]), "_blank");
+    speak("Searching for " + m[1] + ", boss."); return;
+  }
+  // add task
+  m = q.match(/^(?:add|create|new)\s+(?:a\s+)?(?:task\s+)?(?:to\s+)?(?:called\s+)?(.+)$/);
+  if (m) { addTask(m[1], ""); return; }
+  // set alarm
+  if (/set (?:an? )?(?:alarm|reminder)/.test(q)) {
+    const time = parseSpokenTime(q);
+    if (time) {
+      const label = q.replace(/.*(?:alarm|reminder)(?: for| at| to)?\s*/, "").replace(/\d{1,2}[:.]?\d{0,2}\s*(am|pm)?/, "").trim();
+      addAlarm(time, label || "Reminder");
+    } else {
+      speak("Tell me the time, boss. For example: set alarm 7 30 am.");
+    }
+    return;
+  }
+  // clear done
+  if (/clear (done|completed|finished)/.test(q)) { clearDone(); return; }
+  // note
+  m = q.match(/^(?:note|remember|take a note)\s+(?:that\s+)?(.+)$/);
+  if (m) {
+    S.notes = (S.notes ? S.notes + "\n" : "") + "• " + m[1];
+    save(); loadNotes();
+    speak("Noted, boss."); log("Note added: " + m[1]); return;
+  }
+  // greetings
+  if (/^(hello|hi|hey|yo|good (morning|evening|afternoon))/.test(q)) {
+    speak("Hello boss. Sunday is online and ready."); return;
+  }
+  // status
+  if (/system|status|check/.test(q)) { systemCheck(); return; }
+
+  speak("I heard you, boss. Try: add task, what's the weather, open spotify, or set alarm.");
+}
+
+function parseSpokenTime(q) {
+  let m = q.match(/(\d{1,2})[:.](\d{2})\s*(am|pm)?/);
+  if (m) {
+    let h = +m[1], mi = +m[2], ap = m[3];
+    if (ap === "pm" && h < 12) h += 12;
+    if (ap === "am" && h === 12) h = 0;
+    if (h < 24 && mi < 60) return pad(h) + ":" + pad(mi);
+  }
+  m = q.match(/\b(\d{1,2})\s*(am|pm)\b/);
+  if (m) {
+    let h = +m[1], ap = m[2];
+    if (ap === "pm" && h < 12) h += 12;
+    if (ap === "am" && h === 12) h = 0;
+    return pad(h) + ":00";
+  }
+  m = q.match(/\b(\d{1,2})\s+(\d{2})\b/);
+  if (m) return pad(+m[1]) + ":" + m[2];
+  m = q.match(/\bat\s+(\d{1,2})\b/);
+  if (m) return pad(+m[1]) + ":00";
+  return "";
+}
+
+/* =====================================================================
+   WEATHER
+   ===================================================================== */
+const WMO = {
+  0:["Clear sky","☀️"], 1:["Mainly clear","🌤️"], 2:["Partly cloudy","⛅"], 3:["Overcast","☁️"],
+  45:["Fog","🌫️"], 48:["Depositing rime fog","🌫️"],
+  51:["Light drizzle","🌦️"], 53:["Moderate drizzle","🌦️"], 55:["Dense drizzle","🌧️"],
+  56:["Freezing drizzle","🌧️"], 57:["Freezing drizzle","🌧️"],
+  61:["Slight rain","🌦️"], 63:["Moderate rain","🌧️"], 65:["Heavy rain","🌧️"],
+  66:["Freezing rain","🌧️"], 67:["Freezing rain","🌧️"],
+  71:["Slight snow","🌨️"], 73:["Moderate snow","🌨️"], 75:["Heavy snow","❄️"], 77:["Snow grains","🌨️"],
+  80:["Slight showers","🌦️"], 81:["Moderate showers","🌧️"], 82:["Violent showers","⛈️"],
+  85:["Snow showers","🌨️"], 86:["Heavy snow showers","❄️"],
+  95:["Thunderstorm","⛈️"], 96:["Thunderstorm with hail","⛈️"], 99:["Thunderstorm with heavy hail","⛈️"]
+};
+const wmo = (c) => WMO[c] || ["Unknown","☁️"];
+
+async function fetchWeather(lat, lon, place) {
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m` +
+      `&daily=temperature_2m_max,temperature_2m_min&timezone=auto`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const x = await r.json();
+    const c = x.current;
+    const [text, icon] = wmo(c.weather_code);
+
+    $("#temp").textContent = Math.round(c.temperature_2m) + "°C";
+    $("#condition").textContent = text;
+    $("#wicon").textContent = icon;
+    $("#wplace").textContent = place || "";
+    $("#wmeta").textContent =
+      `Feels ${Math.round(c.apparent_temperature)}° · Humidity ${c.relative_humidity_2m}% · ` +
+      `Wind ${Math.round(c.wind_speed_10m)} km/h` +
+      (x.daily ? ` · H ${Math.round(x.daily.temperature_2m_max[0])}° / L ${Math.round(x.daily.temperature_2m_min[0])}°` : "");
+    log(`Weather updated · ${place || "location"}: ${Math.round(c.temperature_2m)}°C, ${text}`);
+  } catch (e) {
+    $("#condition").textContent = "Weather unavailable";
+    log("⚠ Weather error: " + e.message);
+  }
+}
+
+function locateMe() {
+  if (!navigator.geolocation) { ipLocate(); return; }
+  $("#condition").textContent = "Locating…";
+  navigator.geolocation.getCurrentPosition(
+    (p) => { S.city = null; save(); fetchWeather(p.coords.latitude, p.coords.longitude, "Your location"); },
+    (err) => { log("⚠ Geolocation denied (" + err.message + ") — using IP."); ipLocate(); },
+    { timeout: 9000, maximumAge: 600000 }
+  );
+}
+
+async function ipLocate() {
+  const providers = [
+    { url: "https://ipapi.co/json/", pick: j => ({ lat: j.latitude, lon: j.longitude, city: [j.city, j.country_name].filter(Boolean).join(", ") }) },
+    { url: "https://ipwho.is/",     pick: j => ({ lat: j.latitude, lon: j.longitude, city: [j.city, j.country].filter(Boolean).join(", ") }) }
+  ];
+  for (const p of providers) {
+    try {
+      const r = await fetch(p.url);
+      if (!r.ok) continue;
+      const j = await r.json();
+      const v = p.pick(j);
+      if (v && v.lat) { fetchWeather(v.lat, v.lon, v.city || "Approx. location"); return; }
+    } catch (e) { /* try next */ }
+  }
+  $("#condition").textContent = "Set your city manually →";
+  log("⚠ Could not auto-detect location. Type a city above.");
+}
+
+async function searchCity(name) {
+  name = (name || "").trim();
+  if (!name) return;
+  try {
+    const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1&language=en&format=json`);
+    const j = await r.json();
+    if (!j.results || !j.results.length) {
+      speak("I could not find that city, boss.");
+      log("⚠ City not found: " + name);
+      return;
+    }
+    const c = j.results[0];
+    S.city = { name: [c.name, c.country_code].filter(Boolean).join(", "), lat: c.latitude, lon: c.longitude };
+    save();
+    fetchWeather(c.latitude, c.longitude, S.city.name);
+    $("#cityInput").value = "";
+    speak("Weather set for " + c.name + ", boss.");
+  } catch (e) { log("⚠ City lookup failed: " + e.message); }
+}
+
+function refreshWeather() {
+  if (S.city) fetchWeather(S.city.lat, S.city.lon, S.city.name);
+  else locateMe();
+}
+
+/* =====================================================================
+   MEDIA & WEB
+   ===================================================================== */
+function spotifyEmbed(url) {
+  const m = String(url).match(/open\.spotify\.com\/(?:intl-[a-z-]+\/)?(track|album|playlist|artist|episode|show)\/([A-Za-z0-9]+)/);
+  return m ? { type: m[1], id: m[2] } : null;
+}
+
+function loadSpotify() {
+  const url = $("#spotifyUrl").value.trim();
+  if (!url) { openSpotifyApp(); return; }
+  const e = spotifyEmbed(url);
+  if (!e) {
+    window.open(url, "_blank");
+    log("Opened external link.");
+    return;
+  }
+  const height = e.type === "track" ? 152 : 352;
+  $("#spotifyWrap").innerHTML =
+    `<iframe src="https://open.spotify.com/embed/${e.type}/${e.id}?utm_source=generator&theme=0"
+      height="${height}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+      loading="lazy" title="Spotify player"></iframe>`;
+  S.spotify = url; save();
+  log("Spotify " + e.type + " embedded.");
+  speak("Spotify player loaded, boss.");
+}
+
+function openSpotifyApp() {
+  const url = $("#spotifyUrl").value.trim() || S.spotify || "";
+  window.open(url || "https://open.spotify.com", "_blank");
+  log("Spotify opened.");
+  speak("Opening Spotify, boss.");
+}
+
+function webSearch(engine) {
+  const q = $("#searchInput").value.trim();
+  if (!q) { $("#searchInput").focus(); return; }
+  const url = engine === "youtube"
+    ? "https://www.youtube.com/results?search_query=" + encodeURIComponent(q)
+    : "https://www.google.com/search?q=" + encodeURIComponent(q);
+  window.open(url, "_blank");
+  log(`Searched ${engine}: ${q}`);
+  $("#searchInput").value = "";
+}
+
+/* =====================================================================
+   DATA BACKUP
+   ===================================================================== */
+function exportData() {
+  const blob = new Blob([JSON.stringify(S, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `sunday-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  log("Backup exported.");
+  speak("Backup downloaded, boss.");
+}
+
+function importData(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      if (!parsed || typeof parsed !== "object") throw new Error("bad file");
+      S = Object.assign(JSON.parse(JSON.stringify(DEFAULT)), parsed);
+      S.settings = Object.assign({}, DEFAULT.settings, parsed.settings || {});
+      save(); renderAll(); loadNotes();
+      log("Backup restored.");
+      speak("Data restored, boss.");
+    } catch (e) {
+      alert("That doesn't look like a valid SUNDAY backup.");
+      log("⚠ Import failed: " + e.message);
+    }
+    input.value = "";
+  };
+  reader.readAsText(file);
+}
+
+/* =====================================================================
+   MISC
+   ===================================================================== */
+function systemCheck() {
+  beep(1);
+  const checks = [
+    `Clock OK · ${new Date().toLocaleTimeString()}`,
+    `Tasks: ${S.tasks.length} · Alarms: ${S.alarms.length}`,
+    `Weather: ${$("#temp").textContent} ${$("#condition").textContent}`,
+    `Voice: ${"speechSynthesis" in window ? (chosenVoice ? chosenVoice.name : "default") : "unsupported"}`,
+    `Speech input: ${(window.SpeechRecognition || window.webkitSpeechRecognition) ? "available" : "unsupported"}`,
+    `Notifications: ${("Notification" in window) ? Notification.permission : "unsupported"}`,
+    `Network: ${navigator.onLine ? "online" : "offline"}`
+  ];
+  checks.forEach(log);
+  speak("All systems nominal, boss.");
+}
+
+function updateStatus() {
+  const el = $("#status");
+  if (!navigator.onLine) {
+    el.textContent = "● OFFLINE"; el.classList.add("off");
+  } else if (listening) {
+    el.textContent = "● LISTENING"; el.classList.remove("off");
+  } else {
+    el.textContent = "● ONLINE"; el.classList.remove("off");
+  }
+}
+
+window.addEventListener("online",  () => { updateStatus(); log("Network: online"); });
+window.addEventListener("offline", () => { updateStatus(); log("Network: offline"); });
+
+/* =====================================================================
+   BOOT
+   ===================================================================== */
+function renderAll() {
+  renderTasks();
+  renderAlarms();
+}
+
+function init() {
+  // favicon
+  const link = document.createElement("link");
+  link.rel = "icon"; link.href = ICON;
+  document.head.appendChild(link);
+
+  // voice toggle state
+  $("#voiceToggle").checked = !!S.settings.voiceOn;
+
+  // voices (loaded async in most browsers)
+  if ("speechSynthesis" in window) {
+    loadVoices();
+    speechSynthesis.onvoiceschanged = loadVoices;
+    setTimeout(loadVoices, 400);
+  }
+
+  renderAll();
+  loadNotes();
+
+  // saved spotify embed
+  if (S.spotify) { $("#spotifyUrl").value = S.spotify; const e = spotifyEmbed(S.spotify);
+    if (e) $("#spotifyWrap").innerHTML =
+      `<iframe src="https://open.spotify.com/embed/${e.type}/${e.id}?utm_source=generator&theme=0"
+        height="${e.type === "track" ? 152 : 352}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+        loading="lazy" title="Spotify player"></iframe>`;
+  }
+
+  // weather
+  if (S.city) fetchWeather(S.city.lat, S.city.lon, S.city.name);
+  else locateMe();
+  setInterval(refreshWeather, 15 * 60 * 1000);
+
+  // clock
+  tick();
+  setInterval(tick, 1000);
+
+  updateStatus();
+  log("SUNDAY v2 initialized. Welcome back, boss.");
+}
+
+init();
+</script>
+</body>
+</html>
