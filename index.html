@@ -34,6 +34,7 @@ button{cursor:pointer}
 .status{padding:8px 14px;border:1px solid #3a260f;border-radius:20px;color:var(--yellow);
   background:#120d06;font-size:13px;white-space:nowrap}
 .status.off{color:var(--red);border-color:#3a1a1a;background:#120808}
+.status.speaking{color:var(--green);border-color:#1e3a20;background:#08120a}
 
 /* ---------- grid ---------- */
 .grid{display:grid;grid-template-columns:1.25fr .9fr .9fr;gap:16px;align-items:start}
@@ -140,11 +141,23 @@ select.btn{padding:10px;max-width:190px}
 /* ---------- news ---------- */
 .news{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;max-height:460px;overflow:auto;padding-right:4px}
 .news-item{padding:11px 13px;border:1px solid var(--line);border-radius:11px;background:#0c0c0c;
-  text-decoration:none;color:inherit;transition:.15s;display:block}
+  text-decoration:none;color:inherit;transition:.15s;display:block;position:relative}
 .news-item:hover{border-color:var(--orange);background:#120d06;transform:translateY(-1px)}
+.news-item.reading{border-color:var(--green);box-shadow:0 0 0 2px #8cff9b22}
 .news-item .headline{font-size:13.5px;line-height:1.45;margin-bottom:5px;font-weight:500}
 .news-item .meta{font-size:11px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap}
 .news-item .meta .src{color:var(--yellow);font-weight:600;letter-spacing:.3px}
+
+.speaking-pill{display:none;align-items:center;gap:6px;font-size:11px;letter-spacing:1px;
+  color:var(--green);border:1px solid #1e3a20;background:#08120a;padding:4px 10px;border-radius:20px}
+.speaking-pill.on{display:inline-flex}
+.speaking-pill .bar{display:inline-flex;gap:2px;align-items:flex-end;height:12px}
+.speaking-pill .bar i{width:3px;background:var(--green);border-radius:2px;animation:eq 1s infinite ease-in-out}
+.speaking-pill .bar i:nth-child(1){animation-delay:0s}
+.speaking-pill .bar i:nth-child(2){animation-delay:.15s}
+.speaking-pill .bar i:nth-child(3){animation-delay:.3s}
+.speaking-pill .bar i:nth-child(4){animation-delay:.45s}
+@keyframes eq{0%,100%{height:3px}50%{height:12px}}
 
 @media(max-width:1000px){
   .grid{grid-template-columns:1fr 1fr}
@@ -191,6 +204,7 @@ select.btn{padding:10px;max-width:190px}
         <button class="btn mic" id="micBtn" onclick="listen()" title="Voice command">🎙️</button>
         <button class="btn" onclick="quickAdd()">＋ Quick Task</button>
         <button class="btn" onclick="clearDone()">Clear Done</button>
+        <button class="btn danger" onclick="stopSpeaking()" title="Stop Sunday talking">⏹ Stop voice</button>
       </div>
     </section>
 
@@ -217,17 +231,16 @@ select.btn{padding:10px;max-width:190px}
     <section class="card full">
       <h2>Conversation <span class="tag" id="chatState"></span></h2>
       <div class="chips">
-        <button class="btn" onclick="sendChat('Hey Sunday, how are you doing?')">How are you?</button>
+        <button class="btn" onclick="sendChat('Read me the news')">🔊 Read news aloud</button>
         <button class="btn" onclick="sendChat('What is happening in the world right now?')">🌍 World news</button>
-        <button class="btn" onclick="sendChat('Play lo-fi beats on spotify')">🎵 Spotify</button>
-        <button class="btn" onclick="sendChat('Play lofi hip hop on youtube')">▶ YouTube</button>
+        <button class="btn" onclick="sendChat('Read me the latest technology news')">💻 Tech news</button>
+        <button class="btn" onclick="sendChat('Play lo-fi beats on youtube')">▶ YouTube</button>
         <button class="btn" onclick="sendChat('Search for the best laptops of 2025')">🔎 Google</button>
-        <button class="btn" onclick="sendChat('What should I focus on today?')">Plan my day</button>
         <button class="btn" onclick="sendChat('Tell me a joke.')">Joke</button>
       </div>
       <div class="chatlog" id="chatlog"></div>
       <div class="inputrow" style="margin-top:12px;margin-bottom:0">
-        <input id="chatInput" placeholder="Talk to Sunday — ask anything, think out loud, just chat…"
+        <input id="chatInput" placeholder="Talk to Sunday — ask anything, read me the news, play music…"
                autocomplete="off"
                onkeydown="if(event.key==='Enter')sendChat()">
         <button class="btn mic" onclick="listen()" title="Speak to Sunday">🎙️</button>
@@ -249,8 +262,16 @@ select.btn{padding:10px;max-width:190px}
         <button class="btn" onclick="loadNews('business')">📈 Business</button>
         <button class="btn" onclick="loadNews('sports')">⚽ Sports</button>
       </div>
+      <div class="row" style="margin-bottom:12px">
+        <button class="btn primary" onclick="readCurrentNews()" id="readNewsBtn">🔊 Read aloud</button>
+        <button class="btn" onclick="readCurrentNews(true)">📖 Read top 3</button>
+        <button class="btn danger" onclick="stopSpeaking()">⏹ Stop</button>
+        <span class="speaking-pill" id="speakPill">
+          <span class="bar"><i></i><i></i><i></i><i></i></span> SUNDAY READING
+        </span>
+      </div>
       <div class="news" id="newsList">
-        <div class="empty">Hit Fetch — or just tell Sunday “what's happening in the world?”.</div>
+        <div class="empty">Hit Fetch — or just tell Sunday “read me the news”.</div>
       </div>
     </section>
 
@@ -298,12 +319,12 @@ select.btn{padding:10px;max-width:190px}
       </div>
       <div class="controls">
         <button class="btn" onclick="speak('I am listening, boss.')">Test voice</button>
-        <button class="btn" onclick="speechSynthesis.cancel()">Silence</button>
+        <button class="btn danger" onclick="stopSpeaking()">⏹ Silence</button>
       </div>
       <div class="muted tiny" style="margin-top:10px">
-        Tap the 🎙️ button and just talk. Try: “play Arijit Singh on spotify”,
-        “play interstellar trailer on youtube”, “google best phones 2025”,
-        “what's happening in the world”.
+        Tap 🎙️ and just talk. Try: “read me the news”, “read the latest tech news”,
+        “what's happening in the world”, “play Arijit Singh on spotify”.
+        <br>Sunday can also read the whole news panel — hit <b>🔊 Read aloud</b> on the World News card.
       </div>
     </section>
 
@@ -371,9 +392,9 @@ select.btn{padding:10px;max-width:190px}
       <h2>Quick Actions</h2>
       <div class="quick">
         <button class="btn" onclick="systemCheck()">⚡ System Check</button>
+        <button class="btn" onclick="readCurrentNews()">🔊 Read News</button>
         <button class="btn" onclick="loadNews('world')">🌍 World News</button>
-        <button class="btn" onclick="sendChat('Play some relaxing music on youtube')">▶ Play Music</button>
-        <button class="btn" onclick="listen()">🎙️ Voice Command</button>
+        <button class="btn" onclick="stopSpeaking()">⏹ Stop Voice</button>
         <button class="btn" onclick="refreshWeather()">🌦️ Refresh Weather</button>
         <button class="btn" onclick="exportData()">💾 Backup Data</button>
         <button class="btn" onclick="document.getElementById('importFile').click()">📥 Restore Data</button>
@@ -390,20 +411,20 @@ select.btn{padding:10px;max-width:190px}
 
   </main>
 
-  <div class="footer">SUNDAY v3.2 · Conversational dashboard · All data stored privately in this browser</div>
+  <div class="footer">SUNDAY v3.3 · Conversational dashboard · All data stored privately in this browser</div>
 </div>
 
 <script>
 "use strict";
 /* =====================================================================
-   SUNDAY — Personal Command Dashboard  v3.2
+   SUNDAY — Personal Command Dashboard  v3.3
    Single file · No build step · Deploy on GitHub Pages
 
-   v3.2 adds:
-     · Spotify playback (opens search / track in web player)
-     · YouTube playback (opens search results)
-     · Google search from chat
-     · World News panel + news command (Google News RSS via CORS proxy)
+   v3.3 adds:
+     · Full news read-aloud (queued utterances, natural pacing)
+     · Panel “Read aloud” / “Read top 3” buttons + speaking indicator
+     · “Read me the news” commands read the headlines end-to-end
+     · Global stop-voice button in the command center
    ===================================================================== */
 
 const $  = (s) => document.querySelector(s);
@@ -663,10 +684,19 @@ function clearNotes() {
 }
 
 /* =====================================================================
-   VOICE OUTPUT
+   VOICE OUTPUT  —  single utterance + queued parts + speaking state
    ===================================================================== */
 let voices = [];
 let chosenVoice = null;
+let speakTimer = null;
+
+function voiceEnabled() {
+  if (!("speechSynthesis" in window)) return false;
+  if (!S.settings.voiceOn) return false;
+  const t = document.getElementById("voiceToggle");
+  if (t && !t.checked) return false;
+  return true;
+}
 
 function loadVoices() {
   if (!("speechSynthesis" in window)) return;
@@ -711,30 +741,103 @@ function pickVoice(name) {
   speak("Voice updated, boss.");
 }
 
-/* speak — strips markup and cuts at a sentence boundary */
-function speak(msg) {
-  if (!("speechSynthesis" in window)) return;
-  if (!S.settings.voiceOn) return;
-  if (!document.getElementById("voiceToggle")?.checked) return;
-  let text = String(msg)
-    .replace(/[*_`#>•▸]/g, "")
+/* clean text destined for the TTS engine */
+function cleanForSpeech(s) {
+  return String(s)
+    .replace(/[*_`#>•▸◆◾▪]/g, " ")
+    .replace(/\s*—\s*/g, ", ")       /* em-dash → comma pause */
+    .replace(/\s*&\s*/g, " and ")
     .replace(/\s+/g, " ")
     .trim();
-  if (!text) return;
-  if (text.length > 500) {
-    const cut = text.slice(0, 500);
-    const lastDot = Math.max(cut.lastIndexOf("."), cut.lastIndexOf("!"), cut.lastIndexOf("?"));
-    text = lastDot > 200 ? cut.slice(0, lastDot + 1) : cut + "…";
+}
+
+function truncateSpeech(text, max = 480) {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const lastDot = Math.max(cut.lastIndexOf("."), cut.lastIndexOf("!"), cut.lastIndexOf("?"));
+  return lastDot > 150 ? cut.slice(0, lastDot + 1) : cut + "…";
+}
+
+function _utterance(text) {
+  const u = new SpeechSynthesisUtterance(text);
+  const v = chosenVoice || pickBestVoice();
+  if (v) u.voice = v;
+  u.lang = v?.lang || "en-IN";
+  u.rate = 0.98;
+  u.pitch = 1.05;
+  u.volume = 1;
+  return u;
+}
+
+function _startSpeakWatch() {
+  if (speakTimer) return;
+  setSpeakUI(true);
+  speakTimer = setInterval(() => {
+    if (!speechSynthesis.speaking && !speechSynthesis.pending) {
+      clearInterval(speakTimer);
+      speakTimer = null;
+      setSpeakUI(false);
+    }
+  }, 350);
+}
+
+function setSpeakUI(on) {
+  const pill = $("#speakPill");
+  if (pill) pill.classList.toggle("on", on);
+  const st = $("#status");
+  if (st && !listening && navigator.onLine) {
+    st.textContent = on ? "● SPEAKING" : "● ONLINE";
+    st.classList.toggle("speaking", on);
   }
+}
+
+/* single-utterance speak (default entry point) */
+function speak(msg) {
+  if (!voiceEnabled()) return;
+  const text = truncateSpeech(cleanForSpeech(msg));
+  if (!text) return;
   try {
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    const v = chosenVoice || pickBestVoice();
-    if (v) u.voice = v;
-    u.lang = v?.lang || "en-IN";
-    u.rate = 0.98; u.pitch = 1.05; u.volume = 1;
-    speechSynthesis.speak(u);
+    speechSynthesis.speak(_utterance(text));
+    _startSpeakWatch();
   } catch (e) { /* ignore */ }
+}
+
+/* multi-utterance speak — natural pauses between parts */
+function speakParts(parts, onDone) {
+  if (!voiceEnabled()) { if (onDone) onDone(); return; }
+  try { speechSynthesis.cancel(); } catch (e) {}
+
+  const list = (parts || [])
+    .map(p => truncateSpeech(cleanForSpeech(p), 520))
+    .filter(p => p && p.length > 1);
+
+  if (!list.length) { if (onDone) onDone(); return; }
+
+  list.forEach((text, i) => {
+    const u = _utterance(text);
+    if (i === list.length - 1 && onDone) {
+      u.onend = () => { try { onDone(); } catch (e) {} };
+      u.onerror = () => { try { onDone(); } catch (e) {} };
+    }
+    speechSynthesis.speak(u);
+  });
+  _startSpeakWatch();
+}
+
+function stopSpeaking() {
+  try { speechSynthesis.cancel(); } catch (e) {}
+  if (speakTimer) { clearInterval(speakTimer); speakTimer = null; }
+  setSpeakUI(false);
+  highlightReadingItem(-1);
+  log("Voice stopped.");
+}
+
+/* highlight the news item currently being read */
+function highlightReadingItem(idx) {
+  document.querySelectorAll(".news-item").forEach((el, i) => {
+    el.classList.toggle("reading", i === idx);
+  });
 }
 
 function wake() {
@@ -765,6 +868,7 @@ function listen() {
 
   recognizer.onstart = () => {
     listening = true;
+    stopSpeaking();
     $("#micBtn").classList.add("on");
     $("#status").textContent = "● LISTENING";
     log("Listening…");
@@ -800,8 +904,8 @@ function chatScroll() {
 function renderChat() {
   const box = $("#chatlog");
   if (!S.chat.length) {
-    box.innerHTML = '<div class="empty">Say anything, boss. Ask me a question, play a song, ' +
-                    'check the news, or just talk — I\'ll keep up.</div>';
+    box.innerHTML = '<div class="empty">Say anything, boss. Ask me a question, read me the news, ' +
+                    'play a song, or just talk — I\'ll keep up.</div>';
     return;
   }
   box.innerHTML = S.chat.map(m => `
@@ -858,17 +962,28 @@ function pushMessage(role, text) {
   save();
 }
 
-function presentReply(text) {
+/* presentReply(text, spokenOverride?)
+   · text           — the message shown in the chat log
+   · spokenOverride — array of parts to read aloud (in full, no truncation)
+                      if omitted, Sunday reads the first paragraph naturally */
+function presentReply(text, spokenOverride) {
   return new Promise(resolve => {
     if (!text) { resolve(); return; }
     log("Sunday: " + text);
-    /* for long replies (news summaries), only speak the first paragraph */
-    let spoken = text;
-    if (text.length > 400) {
-      const firstPara = text.split(/\n\n/)[0];
-      spoken = firstPara.length > 25 ? firstPara : text.slice(0, 260);
+
+    if (Array.isArray(spokenOverride) && spokenOverride.length) {
+      speakParts(spokenOverride);
+    } else if (typeof spokenOverride === "string" && spokenOverride.trim()) {
+      speak(spokenOverride);
+    } else {
+      let spoken = text;
+      if (text.length > 420) {
+        const firstPara = text.split(/\n\n/)[0];
+        spoken = firstPara.length > 30 ? firstPara : text.slice(0, 260);
+      }
+      speak(spoken);
     }
-    speak(spoken);
+
     pushMessage("assistant", text);
     const node = appendBubble("assistant", "");
     typeInto(node.querySelector(".bubble"), text, resolve);
@@ -892,6 +1007,9 @@ async function sendChat(text) {
   if (text === undefined) input.value = "";
   chatBusy = true;
 
+  /* stop whatever Sunday is currently saying so she can answer */
+  stopSpeaking();
+
   pushMessage("user", msg);
   appendBubble("user", msg);
   log("You: " + msg);
@@ -900,9 +1018,18 @@ async function sendChat(text) {
   let cmd = null;
   try { cmd = await commandBrain(msg); }
   catch (e) { log("⚠ Command error: " + e.message); }
+
   if (cmd !== null) {
     chatBusy = false;
-    if (cmd) await presentReply(cmd);
+    /* command may return:
+         - a string                     → show + speak naturally
+         - { text, spoken: [...] }      → show + read parts aloud fully
+    */
+    if (typeof cmd === "string") {
+      if (cmd) await presentReply(cmd);
+    } else if (cmd && typeof cmd === "object" && cmd.text) {
+      await presentReply(cmd.text, cmd.spoken);
+    }
     return;
   }
 
@@ -925,15 +1052,16 @@ async function sendChat(text) {
 }
 
 /* =====================================================================
-   COMMAND BRAIN — async, returns reply string, or null for pure chat
+   COMMAND BRAIN — async, returns reply, or null for pure chat
    ===================================================================== */
 async function commandBrain(raw) {
   const q = String(raw).toLowerCase().trim();
   let m;
 
   /* ---------- silence ---------- */
-  if (/^(stop|quiet|silence|shut up|be quiet|hush)\b/.test(q)) {
-    speechSynthesis.cancel();
+  if (/^(stop|quiet|silence|shut up|be quiet|hush)\b/.test(q) ||
+      /\b(stop (talking|speaking|reading)|stop the (news|reading)|be quiet)\b/.test(q)) {
+    stopSpeaking();
     return "";
   }
 
@@ -953,13 +1081,19 @@ async function commandBrain(raw) {
            ($("#wmeta").textContent !== "—" ? $("#wmeta").textContent + "." : "");
   }
 
-  /* ---------- WORLD NEWS ---------- */
+  /* ---------- NEWS (with read-aloud support) ---------- */
+  const isReadNews =
+    /\b(read|read out|read aloud|read me|read the|read me the|tell me|say)\b[^]*\b(news|headlines|stories|headline)\b/.test(q) ||
+    /\b(news|headlines)\b[^]*\b(read|aloud|out loud|to me|for me)\b/.test(q);
+
   const isNews =
-    /\b(world news|latest news|breaking news|headlines|current events|news about|news on|news regarding|news from|tell me the news|give me the news|any news|what'?s the news)\b/.test(q) ||
+    isReadNews ||
+    /\b(world news|latest news|breaking news|headlines|current events|news about|news on|news regarding|news from|the news|any news|what'?s the news)\b/.test(q) ||
     /\bwhat'?s (happening|going on|new) (in|around|with) the (world|globe|planet)\b/.test(q) ||
     /\bwhat happened today\b/.test(q) ||
     /^(the\s+)?news$/.test(q) ||
     /^news\b/.test(q);
+
   if (isNews) {
     const topic = extractNewsTopic(q);
     log("Fetching news" + (topic ? " — " + topic : " — top stories") + "…");
@@ -967,11 +1101,20 @@ async function commandBrain(raw) {
     if (!items.length) {
       return "Couldn't pull the news right now, boss — the feed isn't answering. Try the panel in a moment.";
     }
+    const wantRead = isReadNews;
+    const count = wantRead ? Math.min(items.length, 8) : Math.min(items.length, 5);
+    const picked = items.slice(0, count);
+
     const intro = topic
       ? `Here's the latest on ${topic}, boss:`
       : "Here's what's happening around the world, boss:";
-    const summary = items.slice(0, 5).map(n => "• " + n.title).join("\n");
-    return intro + "\n\n" + summary + "\n\nFull list is in the World News panel.";
+    const summary = picked.map(n =>
+      "• " + n.title + (n.source ? "  — " + n.source : "")
+    ).join("\n");
+    const text = intro + "\n\n" + summary + "\n\nFull list is in the World News panel.";
+
+    const spoken = newsToSpeechParts(picked, topic, wantRead);
+    return { text, spoken };
   }
 
   /* ---------- SPOTIFY ---------- */
@@ -994,7 +1137,7 @@ async function commandBrain(raw) {
   m = q.match(/^(?:watch|show me)\s+(.+?)\s*(?:on\s+youtube)?$/);
   if (m) { playOnYouTube(m[1]); return `Searching YouTube for “${m[1]}”.`; }
 
-  /* ---------- ambiguous "play X" → YouTube ---------- */
+  /* ---------- ambiguous “play X” → YouTube ---------- */
   m = q.match(/^(?:play|put on)\s+(?:some\s+|the\s+)?(.+)$/);
   if (m) {
     const query = m[1].trim();
@@ -1017,7 +1160,6 @@ async function commandBrain(raw) {
   /* ---------- TASKS ---------- */
   m = q.match(/^(?:add|create|new)\s+(?:a\s+)?(?:new\s+)?task\s+(?:to\s+|called\s+|that\s+)?(.+)$/);
   if (m) { addTask(m[1].trim(), ""); return `Added “${m[1].trim()}” to your list.`; }
-
   m = q.match(/^remind me to\s+(.+)$/);
   if (m) { addTask(m[1].trim(), ""); return `Noted — I'll keep “${m[1].trim()}” on your list.`; }
 
@@ -1058,37 +1200,34 @@ async function commandBrain(raw) {
 /* ---------- action helpers ---------- */
 function playOnSpotify(query) {
   const q = String(query).replace(/^["']|["']$/g, "").trim();
-  const url = "https://open.spotify.com/search/" + encodeURIComponent(q);
-  window.open(url, "_blank");
+  window.open("https://open.spotify.com/search/" + encodeURIComponent(q), "_blank");
   log("Spotify → " + q);
 }
-
 function playOnYouTube(query) {
   const q = String(query).replace(/^["']|["']$/g, "").trim();
-  const url = "https://www.youtube.com/results?search_query=" + encodeURIComponent(q);
-  window.open(url, "_blank");
+  window.open("https://www.youtube.com/results?search_query=" + encodeURIComponent(q), "_blank");
   log("YouTube → " + q);
 }
-
 function searchGoogle(query) {
   const q = String(query).replace(/^["']|["']$/g, "").trim();
-  const url = "https://www.google.com/search?q=" + encodeURIComponent(q);
-  window.open(url, "_blank");
+  window.open("https://www.google.com/search?q=" + encodeURIComponent(q), "_blank");
   log("Google → " + q);
 }
 
 function extractNewsTopic(q) {
-  let m = q.match(/\bnews\s+(?:about|on|regarding|for|from)\s+(.+)$/);
+  let m = q.match(/\b(?:read(?:\s+(?:out|aloud|me|to me|the))?)\s+(?:me\s+)?(?:the\s+)?(?:latest\s+|today'?s\s+|current\s+|breaking\s+)?news\s+(?:about|on|regarding|for|from|in)\s+(.+)$/);
+  if (!m) m = q.match(/\bnews\s+(?:about|on|regarding|for|from)\s+(.+)$/);
   if (!m) m = q.match(/\b(?:what'?s|what is)\s+(?:going on|happening|new)\s+(?:in|with|about)\s+(.+)$/);
   if (!m) m = q.match(/\b(?:latest|breaking|today'?s)\s+news\s+(?:about|on|in)\s+(.+)$/);
   if (!m) m = q.match(/\bany news\s+(?:about|on|regarding)\s+(.+)$/);
+  if (!m) m = q.match(/^(?:read(?:\s+(?:out|aloud|me))?\s+(?:the\s+)?)(?:latest\s+)?(.+?)\s+news$/);
   if (!m) {
     const m2 = q.match(/^(.+?)\s+news$/);
-    if (m2 && !/^(world|latest|current|the|breaking|today'?s|any|some)$/i.test(m2[1].trim())) m = m2;
+    if (m2 && !/^(world|latest|current|the|breaking|today'?s|any|some|read|me|aloud|out)$/i.test(m2[1].trim())) m = m2;
   }
   if (!m) return "";
   let topic = m[1].trim().replace(/[?.!]+$/, "");
-  if (/^(the\s+)?(world|globe|planet|earth|everything|things)$/i.test(topic)) return "";
+  if (/^(the\s+)?(world|globe|planet|earth|everything|things|me|aloud|out|it|them)$/i.test(topic)) return "";
   return topic;
 }
 
@@ -1116,7 +1255,7 @@ function parseSpokenTime(q) {
 }
 
 /* =====================================================================
-   WORLD NEWS  (Google News RSS via CORS proxy)
+   WORLD NEWS
    ===================================================================== */
 const NEWS_FEEDS = {
   "":           "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",
@@ -1129,12 +1268,15 @@ const NEWS_FEEDS = {
   "health":     "https://news.google.com/rss/headlines/section/topic/HEALTH?hl=en-IN&gl=IN&ceid=IN:en"
 };
 
-/* rotate through CORS proxies until one answers */
 const NEWS_PROXIES = [
   u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
   u => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u),
   u => "https://corsproxy.io/?url=" + encodeURIComponent(u)
 ];
+
+/* cache the most recently loaded news so the panel can read it aloud */
+let lastNewsItems = [];
+let lastNewsTopic = "";
 
 async function fetchRSS(url) {
   let lastErr = null;
@@ -1144,7 +1286,6 @@ async function fetchRSS(url) {
       if (!r.ok) { lastErr = new Error("HTTP " + r.status); continue; }
       const text = await r.text();
       if (!text || text.length < 80) { lastErr = new Error("empty"); continue; }
-      /* some proxies wrap in JSON */
       if (text.trim().startsWith("{")) {
         try {
           const j = JSON.parse(text);
@@ -1162,24 +1303,30 @@ async function fetchRSS(url) {
 async function fetchNews(topic) {
   const t = (topic || "").toLowerCase().trim();
   const url = NEWS_FEEDS[t] ||
-    (t
-      ? `https://news.google.com/rss/search?q=${encodeURIComponent(t)}&hl=en-IN&gl=IN&ceid=IN:en`
-      : NEWS_FEEDS[""]);
+    (t ? `https://news.google.com/rss/search?q=${encodeURIComponent(t)}&hl=en-IN&gl=IN&ceid=IN:en`
+       : NEWS_FEEDS[""]);
   const xml = await fetchRSS(url);
   const doc = new DOMParser().parseFromString(xml, "text/xml");
-  const items = [...doc.querySelectorAll("item")].slice(0, 12);
+  const items = [...doc.querySelectorAll("item")].slice(0, 14);
   return items.map(it => {
     const rawTitle = (it.querySelector("title")?.textContent || "").trim();
     const source   = (it.querySelector("source")?.textContent || "").trim();
     let title = rawTitle;
     if (source && title.endsWith(" - " + source)) title = title.slice(0, -3 - source.length);
     return {
-      title,
+      title: cleanHeadline(title),
       link: it.querySelector("link")?.textContent || "",
       pubDate: it.querySelector("pubDate")?.textContent || "",
       source
     };
   }).filter(x => x.title);
+}
+
+function cleanHeadline(t) {
+  return String(t)
+    .replace(/\s+/g, " ")
+    .replace(/\s*[\-–—]\s*$/, "")
+    .trim();
 }
 
 async function loadNews(topic) {
@@ -1190,6 +1337,8 @@ async function loadNews(topic) {
   try {
     const items = await fetchNews(topic);
     if (!items.length) throw new Error("empty feed");
+    lastNewsItems = items;
+    lastNewsTopic = topic;
     renderNews(items);
     $("#newsState").textContent =
       items.length + " stories · " +
@@ -1228,6 +1377,67 @@ function relativeTime(s) {
   return new Date(s).toLocaleDateString();
 }
 
+/* ---------- build the spoken version of a news roundup ---------- */
+function sentenceize(s) {
+  s = String(s || "").trim();
+  if (!s) return "";
+  if (/[.!?…]$/.test(s)) return s;
+  return s + ".";
+}
+
+function newsToSpeechParts(items, topic, verbose) {
+  const parts = [];
+  const intro = topic
+    ? `Here's the latest on ${topic}, boss.`
+    : "Here's what's happening around the world, boss.";
+  parts.push(intro);
+
+  items.forEach(it => {
+    let line = sentenceize(it.title);
+    if (it.source) line += " From " + it.source + ".";
+    parts.push(line);
+  });
+
+  parts.push(verbose
+    ? "That's the full roundup, boss."
+    : "That's the top of the news right now.");
+  return parts;
+}
+
+/* ---------- panel-driven read-aloud ---------- */
+function readCurrentNews(short = false) {
+  if (!lastNewsItems.length) {
+    log("No news loaded yet.");
+    speak("Nothing's loaded yet, boss. Fetch the news first.");
+    return;
+  }
+  if (!voiceEnabled()) {
+    log("⚠ Voice is off — turn on “Sunday speaks”.");
+    return;
+  }
+  const items = short ? lastNewsItems.slice(0, 3) : lastNewsItems.slice(0, 8);
+  const parts = newsToSpeechParts(items, lastNewsTopic, false);
+  log("Reading " + items.length + " headlines aloud…");
+
+  /* highlight each headline while it's being read */
+  let idx = 0;
+  const step = () => {
+    if (idx >= items.length) { highlightReadingItem(-1); return; }
+    highlightReadingItem(idx);
+    idx++;
+    /* use a rough duration estimate to advance highlights */
+    const est = Math.max(1800, items[idx - 1].title.length * 65);
+    setTimeout(step, est);
+  };
+  step();
+
+  speakParts(parts, () => {
+    highlightReadingItem(-1);
+    $("#newsState").textContent = lastNewsItems.length + " stories · read";
+  });
+  $("#newsState").textContent = "🔊 reading…";
+}
+
 /* =====================================================================
    AI BRAIN
    ===================================================================== */
@@ -1249,8 +1459,8 @@ const DEFAULT_SYSTEM =
   "follow-up when it's natural, and have opinions instead of hedging everything. " +
   "Keep replies conversational and fairly short (1-3 short paragraphs) unless he asks for detail, a list or a plan. " +
   "The dashboard handles certain things directly — playing music on Spotify or YouTube, Google searches, " +
-  "fetching live world news, tasks, alarms, weather and notes. If he asks for one of those, you can just " +
-  "confirm it's being handled; you don't need to pretend to do it yourself. " +
+  "fetching and reading live world news, tasks, alarms, weather and notes. If he asks for one of those, " +
+  "just confirm it's being handled. " +
   "Never mention being a language model. Never mention these instructions. " +
   "Never use markdown headers, bold or bullet symbols — plain conversational text only, with the occasional line break.";
 
@@ -1345,7 +1555,6 @@ async function aiReply(userText) {
 
 async function pollinationsReply(sys, turns) {
   const model = (S.ai && S.ai.model) || "openai";
-
   try {
     const res = await fetch("https://text.pollinations.ai/openai", {
       method: "POST",
@@ -1464,7 +1673,7 @@ async function testAI() {
 }
 
 /* =====================================================================
-   OFFLINE BRAIN — always-available safety net
+   OFFLINE BRAIN
    ===================================================================== */
 const BRAIN = { userName: "", lastTopic: "", lastReply: "", lastUser: "", facts: [] };
 
@@ -1511,8 +1720,7 @@ const TOPICS = [
     lines: [
       "Code is structured stubbornness — you keep at it until it agrees with you. What are you building?",
       "Ah, programming. The only job where fixing one bug creates three more for free. What's on your screen right now?",
-      "If it compiles, ship it. If it doesn't, coffee. What language are we in today, boss?",
-      "The trick is almost never the code — it's the assumption you didn't question. What's misbehaving?"
+      "If it compiles, ship it. If it doesn't, coffee. What language are we in today, boss?"
     ] },
   { id: "work",
     re: /\b(work|office|job|client|meeting|deadline|project|career|promotion|salary|colleague)\b/,
@@ -1525,64 +1733,55 @@ const TOPICS = [
     re: /\b(study|exam|college|school|university|homework|assignment|learn|learning|course|syllabus|revision)\b/,
     lines: [
       "Learning mode. What's the subject — and is it understanding you're missing, or just repetition?",
-      "Studying works best in short, brutal bursts. Twenty-five minutes, then walk away. What are you on right now?",
-      "Exams reward recall, not recognition. Can you explain it out loud without notes yet?"
+      "Studying works best in short, brutal bursts. Twenty-five minutes, then walk away. What are you on right now?"
     ] },
   { id: "food",
     re: /\b(food|hungry|eat|dinner|lunch|breakfast|recipe|cook|cooking|restaurant|pizza|biryani|coffee|tea)\b/,
     lines: [
       "Now we're talking. What are you in the mood for — something quick, or something worth the effort?",
-      "Hungry, boss? Give me a cuisine and I'll point you somewhere sane.",
-      "The correct answer is usually biryani, but I'll let you argue."
+      "Hungry, boss? Give me a cuisine and I'll point you somewhere sane."
     ] },
   { id: "music",
     re: /\b(music|song|songs|playlist|album|band|artist|listen|track)\b/,
     lines: [
       "Music. What's the mood — focus, energy, or something to feel things to?",
-      "Drop a Spotify link in the Music panel and I'll embed it right here. What are we playing?",
-      "A good playlist is just a mood with a tracklist. What are you after?"
+      "Drop a Spotify link in the Music panel and I'll embed it right here. What are we playing?"
     ] },
   { id: "movie",
     re: /\b(movie|film|series|show|netflix|watch|anime|episode|cinema)\b/,
     lines: [
       "What are you in the mood for — something that thinks, or something that just looks incredible?",
-      "Series or film? Because one is a commitment and the other is an evening.",
-      "Give me a genre and I'll narrow it down, boss."
+      "Series or film? Because one is a commitment and the other is an evening."
     ] },
   { id: "health",
     re: /\b(health|gym|workout|exercise|run|running|weight|diet|fitness|protein|steps|sleep)\b/,
     lines: [
       "Body stuff. Consistency beats intensity every single time. What's the plan for today?",
-      "The hardest part is the first ten minutes. After that it's just momentum. Going today?",
-      "Sleep is the cheat code nobody wants to hear about. How many hours are you getting?"
+      "The hardest part is the first ten minutes. After that it's just momentum. Going today?"
     ] },
   { id: "money",
     re: /\b(money|invest|investment|stock|stocks|saving|savings|budget|finance|rich|crypto|salary)\b/,
     lines: [
       "Money talk. Are we optimizing what comes in, or what goes out?",
-      "The boring answer is usually the right one: spend less than you earn, and let time do the heavy lifting.",
-      "What's the goal here — a safety net, or growth?"
+      "The boring answer is usually the right one: spend less than you earn, and let time do the heavy lifting."
     ] },
   { id: "travel",
     re: /\b(travel|trip|vacation|holiday|flight|hotel|visit|tour|goa|traveling|travelling)\b/,
     lines: [
       "Travel. Where to, and are we going for rest or for stories?",
-      "Half the joy is the planning. What's the destination, boss?",
-      "Mountains or ocean? That answer tells me everything."
+      "Half the joy is the planning. What's the destination, boss?"
     ] },
   { id: "tech",
     re: /\b(ai|a\.i\.|robot|machine learning|gadget|phone|laptop|computer|tech|hardware|gpu|internet)\b/,
     lines: [
       "Tech talk. What caught your attention?",
-      "The pace is absurd — half of what's new this year will be boring by next. What's the angle?",
-      "Hardware or software side of it? I can go either way."
+      "The pace is absurd — half of what's new this year will be boring by next. What's the angle?"
     ] },
   { id: "life",
     re: /\b(life|future|purpose|meaning|dream|goal|goals|myself|who am i|direction)\b/,
     lines: [
       "Big question. What made you start thinking about it right now?",
-      "Most people aren't lost — they're just tired of walking. Which one is it for you today?",
-      "Purpose is usually less a discovery and more a decision. What's pulling at you?"
+      "Most people aren't lost — they're just tired of walking. Which one is it for you today?"
     ] }
 ];
 
@@ -1668,23 +1867,21 @@ function localReply(input) {
   if (/\bi(?:'m| am| feel)?\s*(great|amazing|awesome|fantastic|happy|excited|good|wonderful|pumped)\b/.test(q)) {
     return say(rnd([
       "Love that energy, boss. Let's put it to work before it wears off — what's first?",
-      "Good. Ride it. What's the one thing you want done while you're feeling unstoppable?",
-      "That's what I like to hear. Anything you want me to line up?"
+      "Good. Ride it. What's the one thing you want done while you're feeling unstoppable?"
     ]));
   }
 
   if (/\b(who are you|what are you|your name|introduce yourself)\b/.test(q)) {
-    return say("I'm SUNDAY — your dashboard, your assistant, and the voice in this machine. I track your tasks, alarms, weather and notes, I can play music and pull up the news, and I can just… talk. Which is a nice upgrade, honestly.");
+    return say("I'm SUNDAY — your dashboard, your assistant, and the voice in this machine. I track your tasks, alarms, weather and notes, I can play music, search the web, read you the news, and just… talk.");
   }
   if (/\b(what can you do|help me|your capabilities|how do you work|what do you do)\b/.test(q)) {
-    return say("Plenty. Play music on Spotify or YouTube, search Google, pull live world news, keep your tasks and alarms, save notes, and hold a real conversation. " +
-      "Try “play lo-fi beats on youtube”, “search best laptops 2025”, or “what's happening in the world”.");
+    return say("Plenty. Play music on Spotify or YouTube, search Google, read you the live world news, keep your tasks and alarms, save notes, and hold a real conversation. " +
+      "Try “read me the news”, “play lo-fi beats on youtube”, or “search best laptops 2025”.");
   }
   if (/\b(are you (ok|okay|fine|good)|how are you|how'?s it going|how do you feel|how are things)\b/.test(q)) {
     return say(rnd([
       "Running clean, thanks for asking. Every process green, zero complaints. How about you, boss?",
-      "I'm good — I live in a browser tab and I get to talk to you, so no complaints. How's your day treating you?",
-      "All systems nominal on my side. More importantly, how are you doing?"
+      "I'm good — I live in a browser tab and I get to talk to you, so no complaints. How's your day treating you?"
     ]));
   }
 
@@ -1719,9 +1916,9 @@ function localReply(input) {
     const open = S.tasks.filter(t => !t.done);
     if (open.length) {
       return say("Here's your board, boss: " + open.slice(0, 4).map(t => "“" + t.text + "”").join(", ") +
-        ". I'd start with the one you're most tempted to avoid — that's usually the one holding everything else up. Which one is it?");
+        ". I'd start with the one you're most tempted to avoid — that's usually the one holding everything else up.");
     }
-    return say("Your list is empty, so start by naming three things: one that must happen, one that should, and one you'd enjoy. Tell me the first and I'll add it.");
+    return say("Your list is empty, so start by naming three things: one that must happen, one that should, and one you'd enjoy.");
   }
 
   if (/^(what|why|how|when|where|who|which|is|are|can|does|do|did|will|would|should)\b/.test(q) && /\?/.test(raw)) {
@@ -1732,8 +1929,7 @@ function localReply(input) {
     if (kw) {
       return say(rnd([
         `Good question. On ${kw} specifically — I'd want to know what you already suspect before I answer. What's your instinct?`,
-        `${cap(kw)} is one of those things where the framing matters more than the answer. What's the context, boss?`,
-        `I can take a swing at ${kw}, but tell me a bit more first — is this practical, or are you just chewing on it?`
+        `${cap(kw)} is one of those things where the framing matters more than the answer. What's the context, boss?`
       ]));
     }
     return say("Good question. Give me a bit more context and I'll give you a real answer instead of a generic one.");
@@ -1748,9 +1944,8 @@ function localReply(input) {
 
   if (/\b(tell me more|go on|continue|elaborate|and then|more)\b/.test(q) && BRAIN.lastReply) {
     return say(rnd([
-      "Alright, expanding. The short version is: it matters less what you decide and more that you decide it deliberately. What part do you want me to dig into?",
-      "Sure. Here's the longer angle: most of these things break down into what you control and what you don't. Spend your energy entirely on the first list. Which side is this on for you?",
-      "Let me put it differently — what would you tell a friend in exactly your situation? That answer is usually the one you're avoiding."
+      "Alright, expanding. The short version is: it matters less what you decide and more that you decide it deliberately.",
+      "Sure. Most of these things break down into what you control and what you don't. Spend your energy on the first list."
     ]));
   }
 
@@ -1767,16 +1962,12 @@ function localReply(input) {
   if (kw) {
     return say(rnd([
       `So this is about ${kw}. What's the part that's actually bothering you?`,
-      `${cap(kw)} — okay. What made that come up right now?`,
-      `I'm following. Tell me more about the ${kw} side of it.`,
-      `Makes sense. And how do you feel about the ${kw} part specifically?`
+      `${cap(kw)} — okay. What made that come up right now?`
     ]));
   }
   return say(rnd([
     "I'm listening, boss. Keep going — say it however it comes out.",
-    "Understood. What's the piece you haven't said out loud yet?",
-    "Alright. What do you want to do about it?",
-    "Got it. And what would “good” look like here?"
+    "Understood. What's the piece you haven't said out loud yet?"
   ]));
 }
 
@@ -1787,12 +1978,9 @@ const WMO = {
   0:["Clear sky","☀️"], 1:["Mainly clear","🌤️"], 2:["Partly cloudy","⛅"], 3:["Overcast","☁️"],
   45:["Fog","🌫️"], 48:["Depositing rime fog","🌫️"],
   51:["Light drizzle","🌦️"], 53:["Moderate drizzle","🌦️"], 55:["Dense drizzle","🌧️"],
-  56:["Freezing drizzle","🌧️"], 57:["Freezing drizzle","🌧️"],
   61:["Slight rain","🌦️"], 63:["Moderate rain","🌧️"], 65:["Heavy rain","🌧️"],
-  66:["Freezing rain","🌧️"], 67:["Freezing rain","🌧️"],
-  71:["Slight snow","🌨️"], 73:["Moderate snow","🌨️"], 75:["Heavy snow","❄️"], 77:["Snow grains","🌨️"],
+  71:["Slight snow","🌨️"], 73:["Moderate snow","🌨️"], 75:["Heavy snow","❄️"],
   80:["Slight showers","🌦️"], 81:["Moderate showers","🌧️"], 82:["Violent showers","⛈️"],
-  85:["Snow showers","🌨️"], 86:["Heavy snow showers","❄️"],
   95:["Thunderstorm","⛈️"], 96:["Thunderstorm with hail","⛈️"], 99:["Thunderstorm with heavy hail","⛈️"]
 };
 const wmo = (c) => WMO[c] || ["Unknown","☁️"];
@@ -1982,16 +2170,35 @@ function systemCheck() {
 function updateStatus() {
   const el = $("#status");
   if (!navigator.onLine) {
-    el.textContent = "● OFFLINE"; el.classList.add("off");
+    el.textContent = "● OFFLINE"; el.classList.add("off"); el.classList.remove("speaking");
   } else if (listening) {
     el.textContent = "● LISTENING"; el.classList.remove("off");
+  } else if (speechSynthesis && speechSynthesis.speaking) {
+    el.textContent = "● SPEAKING"; el.classList.remove("off"); el.classList.add("speaking");
   } else {
-    el.textContent = "● ONLINE"; el.classList.remove("off");
+    el.textContent = "● ONLINE"; el.classList.remove("off", "speaking");
   }
 }
 
 window.addEventListener("online",  () => { updateStatus(); log("Network: online"); });
 window.addEventListener("offline", () => { updateStatus(); log("Network: offline"); });
+
+/* keep the status pill in sync while Sunday talks */
+setInterval(() => {
+  if (listening) return;
+  updateStatus();
+}, 900);
+
+/* Chrome sometimes stalls on long speech queues — nudge it */
+setInterval(() => {
+  try {
+    if ("speechSynthesis" in window && speechSynthesis.speaking && !speechSynthesis.paused) {
+      /* tiny pause/resume kick keeps the queue alive past ~15s */
+      speechSynthesis.pause();
+      speechSynthesis.resume();
+    }
+  } catch (e) { /* ignore */ }
+}, 11000);
 
 /* =====================================================================
    BOOT
@@ -2036,14 +2243,13 @@ function init() {
   setInterval(tick, 1000);
 
   updateStatus();
-  log("SUNDAY v3.2 initialized. Music, search and news online. Welcome back, boss.");
+  log("SUNDAY v3.3 initialized. News read-aloud ready. Welcome back, boss.");
 
   setTimeout(() => {
     if (!S.chat.length) {
       pushMessage("assistant",
-        "I'm up, boss. Talk to me — ask me anything, play a song, search something, " +
-        "or check what's happening in the world. Try “play lo-fi on youtube”, " +
-        "“search best laptops 2025”, or “what's happening in the world”.");
+        "I'm up, boss. Talk to me, play a song, search something, or say " +
+        "“read me the news” and I'll read the headlines out loud for you.");
       renderChat();
     }
   }, 600);
