@@ -1309,8 +1309,33 @@ function parseRSSXml(xmlText) {
   }).filter(x => x.title);
 }
 
-/* ---------- the source chain ---------- */
+/* ---------- the source chain ----------
+   Every source is a public CORS proxy or JSON-wrapping service fronting the
+   same Google News RSS feed. They're raced in PARALLEL (not tried one after
+   another) so a single slow/dead proxy never blocks the others, and the
+   first one that returns usable items wins. A guard rejects fast on
+   HTML "error page" bodies instead of waiting for a parse failure. */
 const NEWS_SOURCES = [
+  {
+    name: "codetabs",
+    build: u => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u),
+    parse: async (res) => parseRSSXml(await res.text())
+  },
+  {
+    name: "allorigins-raw",
+    build: u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+    parse: async (res) => parseRSSXml(await res.text())
+  },
+  {
+    name: "allorigins-get",
+    build: u => "https://api.allorigins.win/get?url=" + encodeURIComponent(u),
+    parse: async (res) => {
+      const j = await res.json();
+      const xml = j && j.contents;
+      if (!xml) throw new Error("allorigins-get: empty contents");
+      return parseRSSXml(xml);
+    }
+  },
   {
     name: "rss2json",
     build: u => "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(u) + "&count=20",
@@ -1330,24 +1355,24 @@ const NEWS_SOURCES = [
     }
   },
   {
-    name: "allorigins",
-    build: u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
-    parse: async (res) => parseRSSXml(await res.text())
-  },
-  {
-    name: "codetabs",
-    build: u => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u),
-    parse: async (res) => parseRSSXml(await res.text())
-  },
-  {
-    name: "jina",
-    build: u => "https://r.jina.ai/" + u,
-    parse: async (res) => parseRSSXml(await res.text())
-  },
-  {
-    name: "corsproxy",
+    name: "corsproxy.io",
     build: u => "https://corsproxy.io/?url=" + encodeURIComponent(u),
     parse: async (res) => parseRSSXml(await res.text())
+  },
+  {
+    name: "corsfix",
+    build: u => "https://proxy.corsfix.com/?" + u,
+    parse: async (res) => parseRSSXml(await res.text())
+  },
+  {
+    name: "whateverorigin",
+    build: u => "https://www.whateverorigin.org/get?url=" + encodeURIComponent(u),
+    parse: async (res) => {
+      const j = await res.json();
+      const xml = j && j.contents;
+      if (!xml) throw new Error("whateverorigin: empty contents");
+      return parseRSSXml(xml);
+    }
   },
   {
     name: "thingproxy",
@@ -1356,59 +1381,84 @@ const NEWS_SOURCES = [
   }
 ];
 
+/* Reject fast on obvious "this proxy is dead / rate-limited" bodies
+   instead of burning the full timeout waiting for a parse error. */
+function looksLikeProxyFailure(text) {
+  if (!text || text.length < 40) return true;
+  const head = text.slice(0, 300).toLowerCase();
+  if (/<rss|<feed|<?xml/i.test(text.slice(0, 200))) return false;
+  return /rate limit|too many requests|access denied|cloudflare|blocked|<html/.test(head)
+      && !/<item|<entry/i.test(text);
+}
+
 /* Run one source with its own timeout. Resolves to items[] or rejects. */
-async function tryNewsSource(src, feedUrl, timeoutMs = 9000) {
+async function tryNewsSource(src, feedUrl, timeoutMs = 11000) {
   const url = src.build(feedUrl);
   const res = await fetchWithTimeout(url, timeoutMs);
   if (!res.ok) throw new Error(src.name + ": HTTP " + res.status);
+  const clone = res.clone ? res.clone() : null;
+  if (clone) {
+    try {
+      const peek = await clone.text();
+      if (looksLikeProxyFailure(peek)) throw new Error(src.name + ": dead/blocked response");
+    } catch (_) { /* if peeking fails for any reason, fall through to normal parse */ }
+  }
   const items = await src.parse(res);
   if (!items || !items.length) throw new Error(src.name + ": no items");
   return items;
 }
 
-/* Race an array of promises, resolve on the first fulfilled, reject only if all fail */
+/* Settle every promise, return items from the FIRST fulfilled one but keep
+   waiting a beat for a couple more in case the first winner is thin. */
 function firstSuccess(promises) {
   return new Promise((resolve, reject) => {
     let rejected = 0;
     const total = promises.length;
     let done = false;
     promises.forEach(p => {
-      p.then(v => { if (!done) { done = true; resolve(v); } })
+      p.then(v => { if (!done && v && v.length) { done = true; resolve(v); } })
        .catch(() => {
          rejected++;
-         if (rejected === total && !done) reject(new Error("all failed"));
+         if (rejected === total && !done) reject(new Error("all sources failed"));
        });
     });
   });
 }
 
-/* Master fetch: try rss2json first (JSON-native, most reliable),
-   then race the proxy-based sources in parallel. */
+/* ---------- localStorage cache: last successful fetch per topic ----------
+   Gives the panel something real to show even when every live source is
+   down (offline, network filtering, all proxies rate-limited at once). */
+const NEWS_CACHE_KEY = "sunday_news_cache_v1";
+function cacheNews(topic, items) {
+  try {
+    const all = JSON.parse(localStorage.getItem(NEWS_CACHE_KEY) || "{}");
+    all[topic || "__top__"] = { items, ts: Date.now() };
+    localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify(all));
+  } catch (_) { /* storage unavailable — non-fatal */ }
+}
+function getCachedNews(topic) {
+  try {
+    const all = JSON.parse(localStorage.getItem(NEWS_CACHE_KEY) || "{}");
+    return all[topic || "__top__"] || null;
+  } catch (_) { return null; }
+}
+
+/* Master fetch: race every proxy/source in parallel, first real result wins. */
 async function fetchNews(topic) {
   const t = (topic || "").toLowerCase().trim();
   const feedUrl = NEWS_FEEDS[t] ||
     (t ? `https://news.google.com/rss/search?q=${encodeURIComponent(t)}&hl=en-IN&gl=IN&ceid=IN:en`
        : NEWS_FEEDS[""]);
 
-  const byName = Object.fromEntries(NEWS_SOURCES.map(s => [s.name, s]));
+  const racers = NEWS_SOURCES.map(src =>
+    tryNewsSource(src, feedUrl, 11000)
+      .then(items => { log("News source OK: " + src.name + " (" + items.length + " items)"); return items; })
+      .catch(e => { log("  ✕ " + (e && e.message ? e.message : src.name + " failed")); throw e; })
+  );
 
-  /* 1 — rss2json alone (fastest + most reliable) */
-  try {
-    const items = await tryNewsSource(byName.rss2json, feedUrl, 9000);
-    log("News source OK: rss2json");
-    return items;
-  } catch (e) {
-    log("⚠ rss2json failed: " + e.message);
-  }
-
-  /* 2 — race the proxies in parallel, first one wins */
-  const racers = ["allorigins", "codetabs", "jina", "corsproxy", "thingproxy"]
-    .map(name => tryNewsSource(byName[name], feedUrl, 9000)
-      .then(items => { log("News source OK: " + name); return items; })
-      .catch(e => { log("  ✕ " + e.message); throw e; })
-    );
-
-  return await firstSuccess(racers);
+  const items = await firstSuccess(racers);
+  cacheNews(t, items);
+  return items;
 }
 
 /* ---------- UI ---------- */
@@ -1435,6 +1485,15 @@ async function loadNews(topic) {
     return items;
   } catch (e) {
     log("⚠ All news sources failed: " + e.message);
+    const cached = getCachedNews(topic.toLowerCase().trim());
+    if (cached && cached.items && cached.items.length) {
+      lastNewsItems = cached.items;
+      lastNewsTopic = topic;
+      renderNews(cached.items, cached.ts);
+      $("#newsState").textContent = "cached · " + relativeTime(new Date(cached.ts).toUTCString());
+      log(`Showing cached news (${cached.items.length} items from ${new Date(cached.ts).toLocaleTimeString()})`);
+      return cached.items;
+    }
     showNewsError(topic, e.message);
     $("#newsState").textContent = "unavailable";
     return [];
@@ -1449,8 +1508,10 @@ function showNewsError(topic, err) {
   box.innerHTML = `
     <div class="news-error" style="grid-column:1/-1">
       <b>Couldn't reach any news source, boss.</b><br>
-      Every proxy I tried refused the request. This usually means the network is blocking
-      them, or you're offline, or you opened this file from <code>file://</code>.
+      Every proxy I tried refused the request (all ${NEWS_SOURCES.length} of them). This usually means
+      the network is blocking them, you're offline, or you opened this file from <code>file://</code>
+      (serve it over <code>http://</code>/<code>https://</code> for best results — most proxies
+      reject requests from <code>file://</code> origins).
       <div class="controls">
         <button class="btn primary" onclick="loadNews('${esc(topic || "")}')">↻ Retry</button>
         <button class="btn" onclick="window.open('${esc(googleUrl)}','_blank')">Open Google News</button>
@@ -1459,10 +1520,15 @@ function showNewsError(topic, err) {
     </div>`;
 }
 
-function renderNews(items) {
+function renderNews(items, cachedTs) {
   const box = $("#newsList");
   if (!items.length) { box.innerHTML = '<div class="empty">No stories found.</div>'; return; }
-  box.innerHTML = items.map(n => `
+  const staleBanner = cachedTs ? `
+    <div class="news-error" style="grid-column:1/-1;border-color:#4a3a10;background:#161006">
+      ⚠ Live sources unavailable right now — showing the last successful fetch
+      (${esc(relativeTime(new Date(cachedTs).toUTCString()))}).
+    </div>` : "";
+  box.innerHTML = staleBanner + items.map(n => `
     <a class="news-item" href="${esc(n.link)}" target="_blank" rel="noopener">
       <div class="headline">${esc(n.title)}</div>
       <div class="meta">
