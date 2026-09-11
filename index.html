@@ -147,6 +147,9 @@ select.btn{padding:10px;max-width:190px}
 .news-item .headline{font-size:13.5px;line-height:1.45;margin-bottom:5px;font-weight:500}
 .news-item .meta{font-size:11px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap}
 .news-item .meta .src{color:var(--yellow);font-weight:600;letter-spacing:.3px}
+.news-error{padding:14px;border:1px solid #552020;border-radius:11px;background:#150808;
+  color:#ffb3b3;font-size:13px;line-height:1.6}
+.news-error .controls{margin-top:10px;gap:6px}
 
 .speaking-pill{display:none;align-items:center;gap:6px;font-size:11px;letter-spacing:1px;
   color:var(--green);border:1px solid #1e3a20;background:#08120a;padding:4px 10px;border-radius:20px}
@@ -411,20 +414,21 @@ select.btn{padding:10px;max-width:190px}
 
   </main>
 
-  <div class="footer">SUNDAY v3.3 · Conversational dashboard · All data stored privately in this browser</div>
+  <div class="footer">SUNDAY v3.4 · Conversational dashboard · All data stored privately in this browser</div>
 </div>
 
 <script>
 "use strict";
 /* =====================================================================
-   SUNDAY — Personal Command Dashboard  v3.3
+   SUNDAY — Personal Command Dashboard  v3.4
    Single file · No build step · Deploy on GitHub Pages
 
-   v3.3 adds:
-     · Full news read-aloud (queued utterances, natural pacing)
-     · Panel “Read aloud” / “Read top 3” buttons + speaking indicator
-     · “Read me the news” commands read the headlines end-to-end
-     · Global stop-voice button in the command center
+   v3.4 fixes:
+     · News now uses a robust multi-source fetch chain (rss2json → 3 backups
+       raced in parallel) with per-source timeouts and clear console logs
+     · Shows a friendly error card with Retry + "Open Google News" when
+       every source is blocked by the network
+     · Warns when the page is opened from file:// (which can block fetches)
    ===================================================================== */
 
 const $  = (s) => document.querySelector(s);
@@ -684,7 +688,7 @@ function clearNotes() {
 }
 
 /* =====================================================================
-   VOICE OUTPUT  —  single utterance + queued parts + speaking state
+   VOICE OUTPUT
    ===================================================================== */
 let voices = [];
 let chosenVoice = null;
@@ -741,11 +745,10 @@ function pickVoice(name) {
   speak("Voice updated, boss.");
 }
 
-/* clean text destined for the TTS engine */
 function cleanForSpeech(s) {
   return String(s)
     .replace(/[*_`#>•▸◆◾▪]/g, " ")
-    .replace(/\s*—\s*/g, ", ")       /* em-dash → comma pause */
+    .replace(/\s*—\s*/g, ", ")
     .replace(/\s*&\s*/g, " and ")
     .replace(/\s+/g, " ")
     .trim();
@@ -791,7 +794,6 @@ function setSpeakUI(on) {
   }
 }
 
-/* single-utterance speak (default entry point) */
 function speak(msg) {
   if (!voiceEnabled()) return;
   const text = truncateSpeech(cleanForSpeech(msg));
@@ -803,7 +805,6 @@ function speak(msg) {
   } catch (e) { /* ignore */ }
 }
 
-/* multi-utterance speak — natural pauses between parts */
 function speakParts(parts, onDone) {
   if (!voiceEnabled()) { if (onDone) onDone(); return; }
   try { speechSynthesis.cancel(); } catch (e) {}
@@ -833,7 +834,6 @@ function stopSpeaking() {
   log("Voice stopped.");
 }
 
-/* highlight the news item currently being read */
 function highlightReadingItem(idx) {
   document.querySelectorAll(".news-item").forEach((el, i) => {
     el.classList.toggle("reading", i === idx);
@@ -847,7 +847,7 @@ function wake() {
 }
 
 /* =====================================================================
-   VOICE INPUT  →  feeds the conversation pipeline
+   VOICE INPUT
    ===================================================================== */
 let recognizer = null, listening = false;
 
@@ -962,10 +962,6 @@ function pushMessage(role, text) {
   save();
 }
 
-/* presentReply(text, spokenOverride?)
-   · text           — the message shown in the chat log
-   · spokenOverride — array of parts to read aloud (in full, no truncation)
-                      if omitted, Sunday reads the first paragraph naturally */
 function presentReply(text, spokenOverride) {
   return new Promise(resolve => {
     if (!text) { resolve(); return; }
@@ -998,7 +994,6 @@ function clearChat() {
   log("Conversation cleared.");
 }
 
-/* ---------- THE PIPELINE ---------- */
 async function sendChat(text) {
   if (chatBusy) return;
   const input = $("#chatInput");
@@ -1007,24 +1002,18 @@ async function sendChat(text) {
   if (text === undefined) input.value = "";
   chatBusy = true;
 
-  /* stop whatever Sunday is currently saying so she can answer */
   stopSpeaking();
 
   pushMessage("user", msg);
   appendBubble("user", msg);
   log("You: " + msg);
 
-  /* 1 — dashboard commands (tasks, alarms, weather, music, search, news) */
   let cmd = null;
   try { cmd = await commandBrain(msg); }
   catch (e) { log("⚠ Command error: " + e.message); }
 
   if (cmd !== null) {
     chatBusy = false;
-    /* command may return:
-         - a string                     → show + speak naturally
-         - { text, spoken: [...] }      → show + read parts aloud fully
-    */
     if (typeof cmd === "string") {
       if (cmd) await presentReply(cmd);
     } else if (cmd && typeof cmd === "object" && cmd.text) {
@@ -1033,14 +1022,12 @@ async function sendChat(text) {
     return;
   }
 
-  /* 2 — the AI brain */
   const thinking = showTyping();
   let reply = null;
   try { reply = await aiReply(msg); }
   catch (e) { log("⚠ AI error: " + e.message); }
   thinking.remove();
 
-  /* 3 — offline fallback */
   if (!reply) {
     log("↩ Falling back to the offline brain.");
     reply = localReply(msg);
@@ -1052,20 +1039,18 @@ async function sendChat(text) {
 }
 
 /* =====================================================================
-   COMMAND BRAIN — async, returns reply, or null for pure chat
+   COMMAND BRAIN
    ===================================================================== */
 async function commandBrain(raw) {
   const q = String(raw).toLowerCase().trim();
   let m;
 
-  /* ---------- silence ---------- */
   if (/^(stop|quiet|silence|shut up|be quiet|hush)\b/.test(q) ||
       /\b(stop (talking|speaking|reading)|stop the (news|reading)|be quiet)\b/.test(q)) {
     stopSpeaking();
     return "";
   }
 
-  /* ---------- time / date ---------- */
   if (/\b(what('s| is)? the time|what time is it|got the time|time right now)\b/.test(q)) {
     return "It's " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + ", boss.";
   }
@@ -1074,14 +1059,13 @@ async function commandBrain(raw) {
       { weekday: "long", day: "numeric", month: "long", year: "numeric" }) + ".";
   }
 
-  /* ---------- weather ---------- */
   if (/\b(weather|temperature|forecast|how hot|how cold|is it raining|rain today)\b/.test(q)) {
     const place = $("#wplace").textContent || "your area";
     return `Right now it's ${$("#temp").textContent} and ${$("#condition").textContent} in ${place}. ` +
            ($("#wmeta").textContent !== "—" ? $("#wmeta").textContent + "." : "");
   }
 
-  /* ---------- NEWS (with read-aloud support) ---------- */
+  /* ---------- NEWS ---------- */
   const isReadNews =
     /\b(read|read out|read aloud|read me|read the|read me the|tell me|say)\b[^]*\b(news|headlines|stories|headline)\b/.test(q) ||
     /\b(news|headlines)\b[^]*\b(read|aloud|out loud|to me|for me)\b/.test(q);
@@ -1099,7 +1083,8 @@ async function commandBrain(raw) {
     log("Fetching news" + (topic ? " — " + topic : " — top stories") + "…");
     const items = await loadNews(topic);
     if (!items.length) {
-      return "Couldn't pull the news right now, boss — the feed isn't answering. Try the panel in a moment.";
+      return "I couldn't pull the news right now, boss — every source I tried refused. " +
+             "Try the Fetch button in the World News panel in a moment.";
     }
     const wantRead = isReadNews;
     const count = wantRead ? Math.min(items.length, 8) : Math.min(items.length, 5);
@@ -1137,7 +1122,6 @@ async function commandBrain(raw) {
   m = q.match(/^(?:watch|show me)\s+(.+?)\s*(?:on\s+youtube)?$/);
   if (m) { playOnYouTube(m[1]); return `Searching YouTube for “${m[1]}”.`; }
 
-  /* ---------- ambiguous “play X” → YouTube ---------- */
   m = q.match(/^(?:play|put on)\s+(?:some\s+|the\s+)?(.+)$/);
   if (m) {
     const query = m[1].trim();
@@ -1197,7 +1181,6 @@ async function commandBrain(raw) {
   return null;
 }
 
-/* ---------- action helpers ---------- */
 function playOnSpotify(query) {
   const q = String(query).replace(/^["']|["']$/g, "").trim();
   window.open("https://open.spotify.com/search/" + encodeURIComponent(q), "_blank");
@@ -1231,7 +1214,6 @@ function extractNewsTopic(q) {
   return topic;
 }
 
-/* ---------- spoken time parsing ---------- */
 function parseSpokenTime(q) {
   let m = q.match(/(\d{1,2})[:.](\d{2})\s*(am|pm)?/);
   if (m) {
@@ -1255,7 +1237,7 @@ function parseSpokenTime(q) {
 }
 
 /* =====================================================================
-   WORLD NEWS
+   WORLD NEWS  —  robust multi-source fetch chain
    ===================================================================== */
 const NEWS_FEEDS = {
   "":           "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",
@@ -1268,72 +1250,178 @@ const NEWS_FEEDS = {
   "health":     "https://news.google.com/rss/headlines/section/topic/HEALTH?hl=en-IN&gl=IN&ceid=IN:en"
 };
 
-const NEWS_PROXIES = [
-  u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
-  u => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u),
-  u => "https://corsproxy.io/?url=" + encodeURIComponent(u)
-];
-
-/* cache the most recently loaded news so the panel can read it aloud */
 let lastNewsItems = [];
 let lastNewsTopic = "";
 
-async function fetchRSS(url) {
-  let lastErr = null;
-  for (const wrap of NEWS_PROXIES) {
-    try {
-      const r = await fetch(wrap(url), { cache: "no-store" });
-      if (!r.ok) { lastErr = new Error("HTTP " + r.status); continue; }
-      const text = await r.text();
-      if (!text || text.length < 80) { lastErr = new Error("empty"); continue; }
-      if (text.trim().startsWith("{")) {
-        try {
-          const j = JSON.parse(text);
-          if (j && typeof j.contents === "string") return j.contents;
-          if (j && typeof j.body === "string") return j.body;
-        } catch (e) { /* fall through */ }
-      }
-      if (text.includes("<rss") || text.includes("<feed") || text.includes("<item")) return text;
-      lastErr = new Error("not RSS");
-    } catch (e) { lastErr = e; }
-  }
-  throw lastErr || new Error("all proxies failed");
+/* ---------- helpers ---------- */
+function fetchWithTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal, cache: "no-store" })
+    .finally(() => clearTimeout(to));
 }
 
-async function fetchNews(topic) {
-  const t = (topic || "").toLowerCase().trim();
-  const url = NEWS_FEEDS[t] ||
-    (t ? `https://news.google.com/rss/search?q=${encodeURIComponent(t)}&hl=en-IN&gl=IN&ceid=IN:en`
-       : NEWS_FEEDS[""]);
-  const xml = await fetchRSS(url);
-  const doc = new DOMParser().parseFromString(xml, "text/xml");
-  const items = [...doc.querySelectorAll("item")].slice(0, 14);
-  return items.map(it => {
-    const rawTitle = (it.querySelector("title")?.textContent || "").trim();
-    const source   = (it.querySelector("source")?.textContent || "").trim();
-    let title = rawTitle;
-    if (source && title.endsWith(" - " + source)) title = title.slice(0, -3 - source.length);
+/* Split "Headline - Source" → { title, source } */
+function splitTitleSource(rawTitle) {
+  const t = String(rawTitle || "").replace(/\s+/g, " ").trim();
+  const m = t.match(/^(.*?)\s+[-–—]\s+([^-–—]{2,42})$/);
+  if (m && m[1].length > 15) return { title: m[1].trim(), source: m[2].trim() };
+  return { title: t, source: "" };
+}
+
+function cleanHeadline(t) {
+  return String(t).replace(/\s+/g, " ").replace(/\s*[\-–—]\s*$/, "").trim();
+}
+
+/* Parse an RSS XML string into items[] */
+function parseRSSXml(xmlText) {
+  if (!xmlText || xmlText.length < 60) throw new Error("empty response");
+  if (!/<rss|<feed|<item|<entry/i.test(xmlText)) throw new Error("not RSS");
+
+  const doc = new DOMParser().parseFromString(xmlText, "text/xml");
+  if (doc.getElementsByTagName("parsererror").length) throw new Error("XML parse error");
+
+  let items = [...doc.getElementsByTagName("item")];
+  if (!items.length) items = [...doc.getElementsByTagName("entry")];
+  if (!items.length) throw new Error("no items");
+
+  return items.slice(0, 16).map(it => {
+    const rawTitle = (it.getElementsByTagName("title")[0]?.textContent || "").trim();
+    const linkEl =
+      it.getElementsByTagName("link")[0] ||
+      it.getElementsByTagName("guid")[0];
+    let link = linkEl?.textContent?.trim() || "";
+    if (!link && linkEl?.getAttribute) link = linkEl.getAttribute("href") || "";
+    const pubDate =
+      (it.getElementsByTagName("pubDate")[0]?.textContent ||
+       it.getElementsByTagName("published")[0]?.textContent ||
+       it.getElementsByTagName("updated")[0]?.textContent || "").trim();
+    const srcEl = it.getElementsByTagName("source")[0];
+    const rssSource = srcEl?.textContent?.trim() || "";
+
+    const { title, source: titleSource } = splitTitleSource(rawTitle);
     return {
       title: cleanHeadline(title),
-      link: it.querySelector("link")?.textContent || "",
-      pubDate: it.querySelector("pubDate")?.textContent || "",
-      source
+      link,
+      pubDate,
+      source: rssSource || titleSource || ""
     };
   }).filter(x => x.title);
 }
 
-function cleanHeadline(t) {
-  return String(t)
-    .replace(/\s+/g, " ")
-    .replace(/\s*[\-–—]\s*$/, "")
-    .trim();
+/* ---------- the source chain ---------- */
+const NEWS_SOURCES = [
+  {
+    name: "rss2json",
+    build: u => "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(u) + "&count=20",
+    parse: async (res) => {
+      const j = await res.json();
+      if (!j || j.status !== "ok" || !Array.isArray(j.items) || !j.items.length)
+        throw new Error("rss2json: " + (j && j.message ? j.message : "bad response"));
+      return j.items.slice(0, 16).map(it => {
+        const { title, source: titleSource } = splitTitleSource(it.title || "");
+        return {
+          title: cleanHeadline(title),
+          link: it.link || it.guid || "",
+          pubDate: it.pubDate || "",
+          source: (it.author || "").trim() || titleSource
+        };
+      }).filter(x => x.title);
+    }
+  },
+  {
+    name: "allorigins",
+    build: u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+    parse: async (res) => parseRSSXml(await res.text())
+  },
+  {
+    name: "codetabs",
+    build: u => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u),
+    parse: async (res) => parseRSSXml(await res.text())
+  },
+  {
+    name: "jina",
+    build: u => "https://r.jina.ai/" + u,
+    parse: async (res) => parseRSSXml(await res.text())
+  },
+  {
+    name: "corsproxy",
+    build: u => "https://corsproxy.io/?url=" + encodeURIComponent(u),
+    parse: async (res) => parseRSSXml(await res.text())
+  },
+  {
+    name: "thingproxy",
+    build: u => "https://thingproxy.freeboard.io/fetch/" + u,
+    parse: async (res) => parseRSSXml(await res.text())
+  }
+];
+
+/* Run one source with its own timeout. Resolves to items[] or rejects. */
+async function tryNewsSource(src, feedUrl, timeoutMs = 9000) {
+  const url = src.build(feedUrl);
+  const res = await fetchWithTimeout(url, timeoutMs);
+  if (!res.ok) throw new Error(src.name + ": HTTP " + res.status);
+  const items = await src.parse(res);
+  if (!items || !items.length) throw new Error(src.name + ": no items");
+  return items;
 }
 
+/* Race an array of promises, resolve on the first fulfilled, reject only if all fail */
+function firstSuccess(promises) {
+  return new Promise((resolve, reject) => {
+    let rejected = 0;
+    const total = promises.length;
+    let done = false;
+    promises.forEach(p => {
+      p.then(v => { if (!done) { done = true; resolve(v); } })
+       .catch(() => {
+         rejected++;
+         if (rejected === total && !done) reject(new Error("all failed"));
+       });
+    });
+  });
+}
+
+/* Master fetch: try rss2json first (JSON-native, most reliable),
+   then race the proxy-based sources in parallel. */
+async function fetchNews(topic) {
+  const t = (topic || "").toLowerCase().trim();
+  const feedUrl = NEWS_FEEDS[t] ||
+    (t ? `https://news.google.com/rss/search?q=${encodeURIComponent(t)}&hl=en-IN&gl=IN&ceid=IN:en`
+       : NEWS_FEEDS[""]);
+
+  const byName = Object.fromEntries(NEWS_SOURCES.map(s => [s.name, s]));
+
+  /* 1 — rss2json alone (fastest + most reliable) */
+  try {
+    const items = await tryNewsSource(byName.rss2json, feedUrl, 9000);
+    log("News source OK: rss2json");
+    return items;
+  } catch (e) {
+    log("⚠ rss2json failed: " + e.message);
+  }
+
+  /* 2 — race the proxies in parallel, first one wins */
+  const racers = ["allorigins", "codetabs", "jina", "corsproxy", "thingproxy"]
+    .map(name => tryNewsSource(byName[name], feedUrl, 9000)
+      .then(items => { log("News source OK: " + name); return items; })
+      .catch(e => { log("  ✕ " + e.message); throw e; })
+    );
+
+  return await firstSuccess(racers);
+}
+
+/* ---------- UI ---------- */
 async function loadNews(topic) {
   topic = (topic !== undefined ? topic : ($("#newsTopic").value || "")).trim();
   const box = $("#newsList");
   $("#newsState").textContent = "fetching…";
   box.innerHTML = '<div class="empty">Fetching the latest…</div>';
+
+  if (location.protocol === "file:") {
+    log("⚠ Page opened from file:// — network fetches may be blocked. Serve over http:// for best results.");
+  }
+
   try {
     const items = await fetchNews(topic);
     if (!items.length) throw new Error("empty feed");
@@ -1346,11 +1434,29 @@ async function loadNews(topic) {
     log(`News loaded (${topic || "top stories"}): ${items.length} items`);
     return items;
   } catch (e) {
-    box.innerHTML = '<div class="empty">Couldn\'t reach the news feed, boss. Try again in a moment.</div>';
+    log("⚠ All news sources failed: " + e.message);
+    showNewsError(topic, e.message);
     $("#newsState").textContent = "unavailable";
-    log("⚠ News error: " + e.message);
     return [];
   }
+}
+
+function showNewsError(topic, err) {
+  const box = $("#newsList");
+  const googleUrl = topic
+    ? "https://news.google.com/search?q=" + encodeURIComponent(topic)
+    : "https://news.google.com/";
+  box.innerHTML = `
+    <div class="news-error" style="grid-column:1/-1">
+      <b>Couldn't reach any news source, boss.</b><br>
+      Every proxy I tried refused the request. This usually means the network is blocking
+      them, or you're offline, or you opened this file from <code>file://</code>.
+      <div class="controls">
+        <button class="btn primary" onclick="loadNews('${esc(topic || "")}')">↻ Retry</button>
+        <button class="btn" onclick="window.open('${esc(googleUrl)}','_blank')">Open Google News</button>
+      </div>
+      <div class="muted tiny" style="margin-top:8px">${esc(err || "")}</div>
+    </div>`;
 }
 
 function renderNews(items) {
@@ -1377,7 +1483,7 @@ function relativeTime(s) {
   return new Date(s).toLocaleDateString();
 }
 
-/* ---------- build the spoken version of a news roundup ---------- */
+/* ---------- spoken roundup ---------- */
 function sentenceize(s) {
   s = String(s || "").trim();
   if (!s) return "";
@@ -1404,7 +1510,6 @@ function newsToSpeechParts(items, topic, verbose) {
   return parts;
 }
 
-/* ---------- panel-driven read-aloud ---------- */
 function readCurrentNews(short = false) {
   if (!lastNewsItems.length) {
     log("No news loaded yet.");
@@ -1419,13 +1524,11 @@ function readCurrentNews(short = false) {
   const parts = newsToSpeechParts(items, lastNewsTopic, false);
   log("Reading " + items.length + " headlines aloud…");
 
-  /* highlight each headline while it's being read */
   let idx = 0;
   const step = () => {
     if (idx >= items.length) { highlightReadingItem(-1); return; }
     highlightReadingItem(idx);
     idx++;
-    /* use a rough duration estimate to advance highlights */
     const est = Math.max(1800, items[idx - 1].title.length * 65);
     setTimeout(step, est);
   };
@@ -1726,14 +1829,13 @@ const TOPICS = [
     re: /\b(work|office|job|client|meeting|deadline|project|career|promotion|salary|colleague)\b/,
     lines: [
       "Work talk. What's the actual blocker — the task, or the people around the task?",
-      "Deadlines are just pressure with a calendar attached. What's the one thing that would move this forward today?",
-      "Tell me more. Is this a “needs more hours” problem or a “needs a different approach” problem?"
+      "Deadlines are just pressure with a calendar attached. What's the one thing that would move this forward today?"
     ] },
   { id: "study",
     re: /\b(study|exam|college|school|university|homework|assignment|learn|learning|course|syllabus|revision)\b/,
     lines: [
       "Learning mode. What's the subject — and is it understanding you're missing, or just repetition?",
-      "Studying works best in short, brutal bursts. Twenty-five minutes, then walk away. What are you on right now?"
+      "Studying works best in short, brutal bursts. Twenty-five minutes, then walk away."
     ] },
   { id: "food",
     re: /\b(food|hungry|eat|dinner|lunch|breakfast|recipe|cook|cooking|restaurant|pizza|biryani|coffee|tea)\b/,
@@ -1745,7 +1847,7 @@ const TOPICS = [
     re: /\b(music|song|songs|playlist|album|band|artist|listen|track)\b/,
     lines: [
       "Music. What's the mood — focus, energy, or something to feel things to?",
-      "Drop a Spotify link in the Music panel and I'll embed it right here. What are we playing?"
+      "Drop a Spotify link in the Music panel and I'll embed it right here."
     ] },
   { id: "movie",
     re: /\b(movie|film|series|show|netflix|watch|anime|episode|cinema)\b/,
@@ -1757,7 +1859,7 @@ const TOPICS = [
     re: /\b(health|gym|workout|exercise|run|running|weight|diet|fitness|protein|steps|sleep)\b/,
     lines: [
       "Body stuff. Consistency beats intensity every single time. What's the plan for today?",
-      "The hardest part is the first ten minutes. After that it's just momentum. Going today?"
+      "The hardest part is the first ten minutes. After that it's just momentum."
     ] },
   { id: "money",
     re: /\b(money|invest|investment|stock|stocks|saving|savings|budget|finance|rich|crypto|salary)\b/,
@@ -1775,7 +1877,7 @@ const TOPICS = [
     re: /\b(ai|a\.i\.|robot|machine learning|gadget|phone|laptop|computer|tech|hardware|gpu|internet)\b/,
     lines: [
       "Tech talk. What caught your attention?",
-      "The pace is absurd — half of what's new this year will be boring by next. What's the angle?"
+      "The pace is absurd — half of what's new this year will be boring by next."
     ] },
   { id: "life",
     re: /\b(life|future|purpose|meaning|dream|goal|goals|myself|who am i|direction)\b/,
@@ -2161,7 +2263,8 @@ function systemCheck() {
     `Voice: ${"speechSynthesis" in window ? (chosenVoice ? chosenVoice.name : "default") : "unsupported"}`,
     `Speech input: ${(window.SpeechRecognition || window.webkitSpeechRecognition) ? "available" : "unsupported"}`,
     `Notifications: ${("Notification" in window) ? Notification.permission : "unsupported"}`,
-    `Network: ${navigator.onLine ? "online" : "offline"}`
+    `Network: ${navigator.onLine ? "online" : "offline"}`,
+    `News: ${lastNewsItems.length ? lastNewsItems.length + " items loaded" : "none loaded"}`
   ];
   checks.forEach(log);
   speak("All systems nominal, boss.");
@@ -2183,17 +2286,11 @@ function updateStatus() {
 window.addEventListener("online",  () => { updateStatus(); log("Network: online"); });
 window.addEventListener("offline", () => { updateStatus(); log("Network: offline"); });
 
-/* keep the status pill in sync while Sunday talks */
-setInterval(() => {
-  if (listening) return;
-  updateStatus();
-}, 900);
+setInterval(() => { if (!listening) updateStatus(); }, 900);
 
-/* Chrome sometimes stalls on long speech queues — nudge it */
 setInterval(() => {
   try {
     if ("speechSynthesis" in window && speechSynthesis.speaking && !speechSynthesis.paused) {
-      /* tiny pause/resume kick keeps the queue alive past ~15s */
       speechSynthesis.pause();
       speechSynthesis.resume();
     }
@@ -2243,7 +2340,11 @@ function init() {
   setInterval(tick, 1000);
 
   updateStatus();
-  log("SUNDAY v3.3 initialized. News read-aloud ready. Welcome back, boss.");
+  log("SUNDAY v3.4 initialized. News source chain ready. Welcome back, boss.");
+
+  if (location.protocol === "file:") {
+    log("ℹ Opened from file:// — some proxies may block requests. Serving over http:// gives the best results.");
+  }
 
   setTimeout(() => {
     if (!S.chat.length) {
@@ -2254,7 +2355,6 @@ function init() {
     }
   }, 600);
 
-  /* auto-load world news so the panel isn't empty */
   setTimeout(() => {
     if (!$("#newsList").querySelector(".news-item")) loadNews("world");
   }, 1800);
