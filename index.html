@@ -414,21 +414,26 @@ select.btn{padding:10px;max-width:190px}
 
   </main>
 
-  <div class="footer">SUNDAY v3.4 · Conversational dashboard · All data stored privately in this browser</div>
+  <div class="footer">SUNDAY v3.5.1 · Conversational dashboard · All data stored privately in this browser</div>
 </div>
 
 <script>
 "use strict";
 /* =====================================================================
-   SUNDAY — Personal Command Dashboard  v3.4
+   SUNDAY — Personal Command Dashboard  v3.5.1
    Single file · No build step · Deploy on GitHub Pages
 
-   v3.4 fixes:
-     · News now uses a robust multi-source fetch chain (rss2json → 3 backups
-       raced in parallel) with per-source timeouts and clear console logs
-     · Shows a friendly error card with Retry + "Open Google News" when
-       every source is blocked by the network
-     · Warns when the page is opened from file:// (which can block fetches)
+   v3.5.1 fix:
+     · Added missing `let lastNewsItems` and `let lastNewsTopic` declarations.
+       This fixes the "lastNewsItems is not defined" error that appeared
+       when the news fetch failed.
+
+   v3.5 change:
+     · Replaced the private multi-proxy news chain with a clean, free,
+       no-key news reader built on two CORS-enabled public APIs:
+         1) Hacker News (Algolia) — https://hn.algolia.com/api/v1/
+         2) Reddit public JSON     — https://www.reddit.com/*.json
+       Both speak CORS directly, so no proxy, no signup, no API key.
    ===================================================================== */
 
 const $  = (s) => document.querySelector(s);
@@ -1083,7 +1088,7 @@ async function commandBrain(raw) {
     log("Fetching news" + (topic ? " — " + topic : " — top stories") + "…");
     const items = await loadNews(topic);
     if (!items.length) {
-      return "I couldn't pull the news right now, boss — every source I tried refused. " +
+      return "I couldn't pull the news right now, boss — the news reader refused. " +
              "Try the Fetch button in the World News panel in a moment.";
     }
     const wantRead = isReadNews;
@@ -1237,27 +1242,76 @@ function parseSpokenTime(q) {
 }
 
 /* =====================================================================
-   WORLD NEWS  —  robust multi-source fetch chain
+   WORLD NEWS  —  free, no-key, CORS-direct news reader
+   ---------------------------------------------------------------------
+   Two public, no-signup, CORS-enabled sources are raced in parallel:
+
+     1. Hacker News via Algolia  (https://hn.algolia.com/api/v1/)
+        - Front page for "top stories"
+        - Story search for a topic
+
+     2. Reddit public JSON       (https://www.reddit.com/*.json)
+        - Subreddit "hot" listings for known topics
+        - Search for anything else
+
+   Both speak CORS directly to the browser, so no proxy, no API key,
+   no signup, no rate-limit dance. First usable response wins.
    ===================================================================== */
-const NEWS_FEEDS = {
-  "":           "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",
-  "world":      "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-IN&gl=IN&ceid=IN:en",
-  "india":      "https://news.google.com/rss/headlines/section/topic/NATION?hl=en-IN&gl=IN&ceid=IN:en",
-  "technology": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=en-IN&gl=IN&ceid=IN:en",
-  "business":   "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=en-IN&gl=IN&ceid=IN:en",
-  "science":    "https://news.google.com/rss/headlines/section/topic/SCIENCE?hl=en-IN&gl=IN&ceid=IN:en",
-  "sports":     "https://news.google.com/rss/headlines/section/topic/SPORTS?hl=en-IN&gl=IN&ceid=IN:en",
-  "health":     "https://news.google.com/rss/headlines/section/topic/HEALTH?hl=en-IN&gl=IN&ceid=IN:en"
-};
 
-let lastNewsItems = [];
-let lastNewsTopic = "";
+/* ---------- tiny fetch helper ---------- */
+function fetchWithTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal, cache: "no-store" })
+    .finally(() => clearTimeout(to));
+}
 
-/* ---------- direct, proxy-free source: Reddit's public JSON API ----------
-   Reddit serves its .json endpoints with open CORS headers, so this can be
-   fetched straight from the browser with NO third-party proxy involved.
-   That makes it immune to the "every free CORS proxy is rate-limited /
-   blocked by this carrier" failure mode that takes down the proxy chain. */
+/* ---------- headline cleaners ---------- */
+function splitTitleSource(rawTitle) {
+  const t = String(rawTitle || "").replace(/\s+/g, " ").trim();
+  const m = t.match(/^(.*?)\s+[-–—]\s+([^-–—]{2,42})$/);
+  if (m && m[1].length > 15) return { title: m[1].trim(), source: m[2].trim() };
+  return { title: t, source: "" };
+}
+function cleanHeadline(t) {
+  return String(t).replace(/\s+/g, " ").replace(/\s*[\-–—]\s*$/, "").trim();
+}
+
+/* ---------- source 1: Hacker News (Algolia) ----------
+   No key. No proxy. Returns { hits: [...] } with title, url, created_at. */
+async function fetchHNNews(topic, timeoutMs = 9000) {
+  const t = (topic || "").trim();
+  let url;
+  if (!t) {
+    url = "https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=25";
+  } else {
+    url = "https://hn.algolia.com/api/v1/search?query=" +
+          encodeURIComponent(t) + "&tags=story&hitsPerPage=25";
+  }
+  const res = await fetchWithTimeout(url, timeoutMs);
+  if (!res.ok) throw new Error("HN: HTTP " + res.status);
+  const j = await res.json();
+  const hits = (j.hits || []).filter(h => h && h.title);
+  if (!hits.length) throw new Error("HN: no items");
+
+  return hits.slice(0, 16).map(h => {
+    let src = "Hacker News";
+    if (h.url) {
+      try { src = new URL(h.url).hostname.replace(/^www\./, ""); } catch (_) {}
+    }
+    return {
+      title: cleanHeadline(h.title),
+      link: h.url || ("https://news.ycombinator.com/item?id=" + h.objectID),
+      pubDate: h.created_at || "",
+      source: src
+    };
+  }).filter(x => x.title);
+}
+
+/* ---------- source 2: Reddit public JSON ----------
+   Reddit's .json endpoints send open CORS headers, so this works straight
+   from the browser without any proxy. Subreddit for known topics, search
+   for anything else. */
 const NEWS_REDDIT_SUBS = {
   "":           "worldnews+news+UpliftingNews",
   "world":      "worldnews",
@@ -1273,13 +1327,14 @@ async function fetchRedditNews(topic, timeoutMs = 9000) {
   const t = (topic || "").toLowerCase().trim();
   const sub = NEWS_REDDIT_SUBS[t];
   const url = sub
-    ? `https://www.reddit.com/r/${sub}/hot.json?limit=20&raw_json=1`
-    : `https://www.reddit.com/search.json?q=${encodeURIComponent(t)}&sort=new&limit=20&raw_json=1`;
+    ? `https://www.reddit.com/r/${sub}/hot.json?limit=25&raw_json=1`
+    : `https://www.reddit.com/search.json?q=${encodeURIComponent(t)}&sort=new&limit=25&raw_json=1`;
   const res = await fetchWithTimeout(url, timeoutMs);
   if (!res.ok) throw new Error("reddit: HTTP " + res.status);
   const j = await res.json();
   const kids = j && j.data && j.data.children;
   if (!kids || !kids.length) throw new Error("reddit: no items");
+
   const items = kids
     .filter(c => c && c.data && c.data.title && !c.data.stickied)
     .slice(0, 16)
@@ -1288,173 +1343,18 @@ async function fetchRedditNews(topic, timeoutMs = 9000) {
       const isSelfOrReddit = !d.url || d.url.includes("reddit.com") || d.is_self;
       return {
         title: cleanHeadline(d.title),
-        link: !isSelfOrReddit ? d.url : "https://www.reddit.com" + d.permalink,
+        link: !isSelfOrReddit ? d.url : ("https://www.reddit.com" + d.permalink),
         pubDate: d.created_utc ? new Date(d.created_utc * 1000).toUTCString() : "",
         source: "r/" + (d.subreddit || "reddit")
       };
     })
     .filter(x => x.title);
+
   if (!items.length) throw new Error("reddit: filtered empty");
   return items;
 }
 
-/* ---------- helpers ---------- */
-function fetchWithTimeout(url, ms) {
-  const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort(), ms);
-  return fetch(url, { signal: ctrl.signal, cache: "no-store" })
-    .finally(() => clearTimeout(to));
-}
-
-/* Split "Headline - Source" → { title, source } */
-function splitTitleSource(rawTitle) {
-  const t = String(rawTitle || "").replace(/\s+/g, " ").trim();
-  const m = t.match(/^(.*?)\s+[-–—]\s+([^-–—]{2,42})$/);
-  if (m && m[1].length > 15) return { title: m[1].trim(), source: m[2].trim() };
-  return { title: t, source: "" };
-}
-
-function cleanHeadline(t) {
-  return String(t).replace(/\s+/g, " ").replace(/\s*[\-–—]\s*$/, "").trim();
-}
-
-/* Parse an RSS XML string into items[] */
-function parseRSSXml(xmlText) {
-  if (!xmlText || xmlText.length < 60) throw new Error("empty response");
-  if (!/<rss|<feed|<item|<entry/i.test(xmlText)) throw new Error("not RSS");
-
-  const doc = new DOMParser().parseFromString(xmlText, "text/xml");
-  if (doc.getElementsByTagName("parsererror").length) throw new Error("XML parse error");
-
-  let items = [...doc.getElementsByTagName("item")];
-  if (!items.length) items = [...doc.getElementsByTagName("entry")];
-  if (!items.length) throw new Error("no items");
-
-  return items.slice(0, 16).map(it => {
-    const rawTitle = (it.getElementsByTagName("title")[0]?.textContent || "").trim();
-    const linkEl =
-      it.getElementsByTagName("link")[0] ||
-      it.getElementsByTagName("guid")[0];
-    let link = linkEl?.textContent?.trim() || "";
-    if (!link && linkEl?.getAttribute) link = linkEl.getAttribute("href") || "";
-    const pubDate =
-      (it.getElementsByTagName("pubDate")[0]?.textContent ||
-       it.getElementsByTagName("published")[0]?.textContent ||
-       it.getElementsByTagName("updated")[0]?.textContent || "").trim();
-    const srcEl = it.getElementsByTagName("source")[0];
-    const rssSource = srcEl?.textContent?.trim() || "";
-
-    const { title, source: titleSource } = splitTitleSource(rawTitle);
-    return {
-      title: cleanHeadline(title),
-      link,
-      pubDate,
-      source: rssSource || titleSource || ""
-    };
-  }).filter(x => x.title);
-}
-
-/* ---------- the source chain ----------
-   Every source is a public CORS proxy or JSON-wrapping service fronting the
-   same Google News RSS feed. They're raced in PARALLEL (not tried one after
-   another) so a single slow/dead proxy never blocks the others, and the
-   first one that returns usable items wins. A guard rejects fast on
-   HTML "error page" bodies instead of waiting for a parse failure. */
-const NEWS_SOURCES = [
-  {
-    name: "codetabs",
-    build: u => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u),
-    parse: async (res) => parseRSSXml(await res.text())
-  },
-  {
-    name: "allorigins-raw",
-    build: u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
-    parse: async (res) => parseRSSXml(await res.text())
-  },
-  {
-    name: "allorigins-get",
-    build: u => "https://api.allorigins.win/get?url=" + encodeURIComponent(u),
-    parse: async (res) => {
-      const j = await res.json();
-      const xml = j && j.contents;
-      if (!xml) throw new Error("allorigins-get: empty contents");
-      return parseRSSXml(xml);
-    }
-  },
-  {
-    name: "rss2json",
-    build: u => "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(u) + "&count=20",
-    parse: async (res) => {
-      const j = await res.json();
-      if (!j || j.status !== "ok" || !Array.isArray(j.items) || !j.items.length)
-        throw new Error("rss2json: " + (j && j.message ? j.message : "bad response"));
-      return j.items.slice(0, 16).map(it => {
-        const { title, source: titleSource } = splitTitleSource(it.title || "");
-        return {
-          title: cleanHeadline(title),
-          link: it.link || it.guid || "",
-          pubDate: it.pubDate || "",
-          source: (it.author || "").trim() || titleSource
-        };
-      }).filter(x => x.title);
-    }
-  },
-  {
-    name: "corsproxy.io",
-    build: u => "https://corsproxy.io/?url=" + encodeURIComponent(u),
-    parse: async (res) => parseRSSXml(await res.text())
-  },
-  {
-    name: "corsfix",
-    build: u => "https://proxy.corsfix.com/?" + u,
-    parse: async (res) => parseRSSXml(await res.text())
-  },
-  {
-    name: "whateverorigin",
-    build: u => "https://www.whateverorigin.org/get?url=" + encodeURIComponent(u),
-    parse: async (res) => {
-      const j = await res.json();
-      const xml = j && j.contents;
-      if (!xml) throw new Error("whateverorigin: empty contents");
-      return parseRSSXml(xml);
-    }
-  },
-  {
-    name: "thingproxy",
-    build: u => "https://thingproxy.freeboard.io/fetch/" + u,
-    parse: async (res) => parseRSSXml(await res.text())
-  }
-];
-
-/* Reject fast on obvious "this proxy is dead / rate-limited" bodies
-   instead of burning the full timeout waiting for a parse error. */
-function looksLikeProxyFailure(text) {
-  if (!text || text.length < 40) return true;
-  const head = text.slice(0, 300).toLowerCase();
-  if (/<rss|<feed|<?xml/i.test(text.slice(0, 200))) return false;
-  return /rate limit|too many requests|access denied|cloudflare|blocked|<html/.test(head)
-      && !/<item|<entry/i.test(text);
-}
-
-/* Run one source with its own timeout. Resolves to items[] or rejects. */
-async function tryNewsSource(src, feedUrl, timeoutMs = 11000) {
-  const url = src.build(feedUrl);
-  const res = await fetchWithTimeout(url, timeoutMs);
-  if (!res.ok) throw new Error(src.name + ": HTTP " + res.status);
-  const clone = res.clone ? res.clone() : null;
-  if (clone) {
-    try {
-      const peek = await clone.text();
-      if (looksLikeProxyFailure(peek)) throw new Error(src.name + ": dead/blocked response");
-    } catch (_) { /* if peeking fails for any reason, fall through to normal parse */ }
-  }
-  const items = await src.parse(res);
-  if (!items || !items.length) throw new Error(src.name + ": no items");
-  return items;
-}
-
-/* Settle every promise, return items from the FIRST fulfilled one but keep
-   waiting a beat for a couple more in case the first winner is thin. */
+/* ---------- first fulfilled wins ---------- */
 function firstSuccess(promises) {
   return new Promise((resolve, reject) => {
     let rejected = 0;
@@ -1471,9 +1371,9 @@ function firstSuccess(promises) {
 }
 
 /* ---------- localStorage cache: last successful fetch per topic ----------
-   Gives the panel something real to show even when every live source is
-   down (offline, network filtering, all proxies rate-limited at once). */
-const NEWS_CACHE_KEY = "sunday_news_cache_v1";
+   Gives the panel something real to show even when both live sources are
+   unreachable (offline, corporate firewall, etc.). */
+const NEWS_CACHE_KEY = "sunday_news_cache_v2";
 function cacheNews(topic, items) {
   try {
     const all = JSON.parse(localStorage.getItem(NEWS_CACHE_KEY) || "{}");
@@ -1488,26 +1388,22 @@ function getCachedNews(topic) {
   } catch (_) { return null; }
 }
 
-/* Master fetch: race every proxy/source in parallel, first real result wins. */
+/* ---------- master fetch: race HN + Reddit, first real result wins ---------- */
+let lastNewsItems = [];
+let lastNewsTopic = "";
+
 async function fetchNews(topic) {
   const t = (topic || "").toLowerCase().trim();
-  const feedUrl = NEWS_FEEDS[t] ||
-    (t ? `https://news.google.com/rss/search?q=${encodeURIComponent(t)}&hl=en-IN&gl=IN&ceid=IN:en`
-       : NEWS_FEEDS[""]);
 
-  const racers = NEWS_SOURCES.map(src =>
-    tryNewsSource(src, feedUrl, 11000)
-      .then(items => { log("News source OK: " + src.name + " (" + items.length + " items)"); return items; })
-      .catch(e => { log("  ✕ " + (e && e.message ? e.message : src.name + " failed")); throw e; })
-  );
+  const racers = [
+    fetchHNNews(t, 9000)
+      .then(items => { log("News source OK: hacker-news (" + items.length + " items)"); return items; })
+      .catch(e => { log("  ✕ " + (e && e.message ? e.message : "HN failed")); throw e; }),
 
-  /* Reddit needs no proxy — add it to the same race. It's often the fastest
-     to resolve precisely because it skips the proxy hop entirely. */
-  racers.unshift(
     fetchRedditNews(t, 9000)
       .then(items => { log("News source OK: reddit-direct (" + items.length + " items)"); return items; })
-      .catch(e => { log("  ✕ " + (e && e.message ? e.message : "reddit-direct failed")); throw e; })
-  );
+      .catch(e => { log("  ✕ " + (e && e.message ? e.message : "reddit failed")); throw e; })
+  ];
 
   const items = await firstSuccess(racers);
   cacheNews(t, items);
@@ -1561,10 +1457,10 @@ function showNewsError(topic, err) {
   box.innerHTML = `
     <div class="news-error" style="grid-column:1/-1">
       <b>Couldn't reach any news source, boss.</b><br>
-      Every source I tried refused the request (Reddit direct + ${NEWS_SOURCES.length} proxies —
-      all failed). This usually means the network is blocking them, you're offline, or you opened
-      this file from <code>file://</code> (serve it over <code>http://</code>/<code>https://</code>
-      for best results — most proxies reject requests from <code>file://</code> origins).
+      Both no-key news readers (Hacker News Algolia and Reddit's public JSON) refused the
+      request. This usually means you're offline, a network filter is blocking them, or you
+      opened this file from <code>file://</code> (serve it over <code>http://</code> or
+      <code>https://</code> for best results).
       <div class="controls">
         <button class="btn primary" onclick="loadNews('${esc(topic || "")}')">↻ Retry</button>
         <button class="btn" onclick="window.open('${esc(googleUrl)}','_blank')">Open Google News</button>
@@ -2459,10 +2355,10 @@ function init() {
   setInterval(tick, 1000);
 
   updateStatus();
-  log("SUNDAY v3.4 initialized. News source chain ready. Welcome back, boss.");
+  log("SUNDAY v3.5.1 initialized. Free news reader ready (HN + Reddit). Welcome back, boss.");
 
   if (location.protocol === "file:") {
-    log("ℹ Opened from file:// — some proxies may block requests. Serving over http:// gives the best results.");
+    log("ℹ Opened from file:// — some browsers block network requests. Serving over http:// gives the best results.");
   }
 
   setTimeout(() => {
