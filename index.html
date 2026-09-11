@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<meta name="description" content="SUNDAY — personal command dashboard: clock, weather, tasks, alarms, notes, voice assistant.">
+<meta name="description" content="SUNDAY — personal command dashboard: clock, weather, tasks, alarms, notes, conversational AI, music, news.">
 <title>SUNDAY — Personal Command Dashboard</title>
 <style>
 :root{
@@ -114,19 +114,19 @@ select.btn{padding:10px;max-width:190px}
 ::-webkit-scrollbar-thumb:hover{background:#3a3a3a}
 
 /* ---------- conversation ---------- */
-.chatlog{max-height:460px;min-height:220px;overflow:auto;display:flex;flex-direction:column;
-  gap:10px;padding:8px 6px 8px 2px}
+.chatlog{max-height:520px;min-height:260px;overflow:auto;display:flex;flex-direction:column;
+  gap:10px;padding:8px 6px 8px 2px;scroll-behavior:smooth}
 .msg{display:flex;animation:fadein .25s ease}
 @keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .msg.user{justify-content:flex-end}
-.bubble{max-width:80%;padding:11px 14px;border-radius:16px;line-height:1.6;
+.bubble{max-width:80%;padding:11px 14px;border-radius:16px;line-height:1.65;
   white-space:pre-wrap;overflow-wrap:anywhere;font-size:14.5px}
 .msg.user .bubble{background:linear-gradient(135deg,#ff9d00,#e05b00);color:#0a0a0a;
   font-weight:600;border-bottom-right-radius:5px}
 .msg.assistant .bubble{background:#141414;border:1px solid #272727;border-bottom-left-radius:5px}
 .msg.assistant .bubble::before{content:"SUNDAY ▸ ";color:var(--yellow);font-size:11px;
   letter-spacing:1.5px;font-weight:700}
-.typing .bubble::before{content:""}
+.msg.assistant.typing .bubble::before{content:""}
 .typing .bubble{display:flex;gap:5px;align-items:center;padding:15px 16px}
 .typing .bubble span{width:7px;height:7px;border-radius:50%;background:var(--orange);
   animation:blink 1.2s infinite}
@@ -137,10 +137,20 @@ select.btn{padding:10px;max-width:190px}
 .chips .btn{padding:7px 11px;font-size:12.5px;border-radius:20px}
 .brainon{color:var(--green);border-color:#1e3a20;background:#08120a}
 
+/* ---------- news ---------- */
+.news{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;max-height:460px;overflow:auto;padding-right:4px}
+.news-item{padding:11px 13px;border:1px solid var(--line);border-radius:11px;background:#0c0c0c;
+  text-decoration:none;color:inherit;transition:.15s;display:block}
+.news-item:hover{border-color:var(--orange);background:#120d06;transform:translateY(-1px)}
+.news-item .headline{font-size:13.5px;line-height:1.45;margin-bottom:5px;font-weight:500}
+.news-item .meta{font-size:11px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap}
+.news-item .meta .src{color:var(--yellow);font-weight:600;letter-spacing:.3px}
+
 @media(max-width:1000px){
   .grid{grid-template-columns:1fr 1fr}
   .wide{grid-column:1/-1}
   .quick{grid-template-columns:1fr 1fr}
+  .news{grid-template-columns:1fr}
 }
 @media(max-width:650px){
   .app{padding:12px}
@@ -153,6 +163,7 @@ select.btn{padding:10px;max-width:190px}
   .task{grid-template-columns:64px 1fr auto;gap:8px;padding:10px}
   .card{padding:16px}
   .bubble{max-width:92%}
+  .news{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -207,19 +218,39 @@ select.btn{padding:10px;max-width:190px}
       <h2>Conversation <span class="tag" id="chatState"></span></h2>
       <div class="chips">
         <button class="btn" onclick="sendChat('Hey Sunday, how are you doing?')">How are you?</button>
+        <button class="btn" onclick="sendChat('What is happening in the world right now?')">🌍 World news</button>
+        <button class="btn" onclick="sendChat('Play lo-fi beats on spotify')">🎵 Spotify</button>
+        <button class="btn" onclick="sendChat('Play lofi hip hop on youtube')">▶ YouTube</button>
+        <button class="btn" onclick="sendChat('Search for the best laptops of 2025')">🔎 Google</button>
         <button class="btn" onclick="sendChat('What should I focus on today?')">Plan my day</button>
-        <button class="btn" onclick="sendChat('Tell me something interesting.')">Tell me something</button>
-        <button class="btn" onclick="sendChat('I need some motivation.')">Motivate me</button>
-        <button class="btn" onclick="sendChat('Tell me a joke.')">Tell me a joke</button>
+        <button class="btn" onclick="sendChat('Tell me a joke.')">Joke</button>
       </div>
       <div class="chatlog" id="chatlog"></div>
       <div class="inputrow" style="margin-top:12px;margin-bottom:0">
-        <input id="chatInput" placeholder="Say anything to Sunday — ask, talk, think out loud…"
+        <input id="chatInput" placeholder="Talk to Sunday — ask anything, think out loud, just chat…"
                autocomplete="off"
                onkeydown="if(event.key==='Enter')sendChat()">
         <button class="btn mic" onclick="listen()" title="Speak to Sunday">🎙️</button>
         <button class="btn primary" onclick="sendChat()">Send</button>
         <button class="btn" onclick="clearChat()">Clear</button>
+      </div>
+    </section>
+
+    <!-- ============ WORLD NEWS ============ -->
+    <section class="card full">
+      <h2>World News <span class="tag" id="newsState">idle</span></h2>
+      <div class="inputrow">
+        <input id="newsTopic" placeholder="Topic (e.g. India, AI, markets) — blank = top stories"
+               onkeydown="if(event.key==='Enter')loadNews()">
+        <button class="btn primary" onclick="loadNews()">Fetch</button>
+        <button class="btn" onclick="loadNews('world')">🌍 World</button>
+        <button class="btn" onclick="loadNews('india')">🇮🇳 India</button>
+        <button class="btn" onclick="loadNews('technology')">💻 Tech</button>
+        <button class="btn" onclick="loadNews('business')">📈 Business</button>
+        <button class="btn" onclick="loadNews('sports')">⚽ Sports</button>
+      </div>
+      <div class="news" id="newsList">
+        <div class="empty">Hit Fetch — or just tell Sunday “what's happening in the world?”.</div>
       </div>
     </section>
 
@@ -270,19 +301,20 @@ select.btn{padding:10px;max-width:190px}
         <button class="btn" onclick="speechSynthesis.cancel()">Silence</button>
       </div>
       <div class="muted tiny" style="margin-top:10px">
-        Talk naturally: “hey Sunday how's it going”, “what should I work on today”,
-        “add task buy groceries”, “set alarm 7:30 am”, “search for best laptops”.
+        Tap the 🎙️ button and just talk. Try: “play Arijit Singh on spotify”,
+        “play interstellar trailer on youtube”, “google best phones 2025”,
+        “what's happening in the world”.
       </div>
     </section>
 
     <!-- ============ AI BRAIN ============ -->
     <section class="card">
-      <h2>AI Brain <span class="tag" id="aiState">offline</span></h2>
+      <h2>AI Brain <span class="tag" id="aiState">connecting…</span></h2>
       <div class="inputrow">
         <select id="aiProvider" class="btn" style="max-width:none" onchange="onProviderChange()"></select>
       </div>
       <div class="inputrow">
-        <input id="aiKey" type="password" placeholder="Paste API key (stored only in this browser)" autocomplete="off">
+        <input id="aiKey" type="password" placeholder="API key (only needed for the paid brains)" autocomplete="off">
       </div>
       <div class="inputrow">
         <input id="aiModel" placeholder="Model (optional)">
@@ -291,12 +323,11 @@ select.btn{padding:10px;max-width:190px}
       <div class="controls">
         <button class="btn primary" onclick="saveAI()">Save brain</button>
         <button class="btn" onclick="testAI()">Test</button>
-        <button class="btn danger" onclick="clearAI()">Remove key</button>
+        <button class="btn danger" onclick="clearAI()">Reset</button>
       </div>
       <div class="muted tiny" style="margin-top:10px" id="aiHint">
-        With no key, Sunday uses a built-in offline brain — she still chats, jokes,
-        remembers what you tell her, and runs every command. Add a free Gemini key
-        for full open-ended conversation.
+        Default: <b>Free cloud brain</b> — full open-ended conversation, no key, no signup.
+        If the network ever fails, Sunday falls back to her built-in offline brain automatically.
       </div>
     </section>
 
@@ -340,8 +371,8 @@ select.btn{padding:10px;max-width:190px}
       <h2>Quick Actions</h2>
       <div class="quick">
         <button class="btn" onclick="systemCheck()">⚡ System Check</button>
-        <button class="btn" onclick="document.getElementById('taskText').focus()">📋 Plan Day</button>
-        <button class="btn" onclick="testAlert()">🔔 Test Alert</button>
+        <button class="btn" onclick="loadNews('world')">🌍 World News</button>
+        <button class="btn" onclick="sendChat('Play some relaxing music on youtube')">▶ Play Music</button>
         <button class="btn" onclick="listen()">🎙️ Voice Command</button>
         <button class="btn" onclick="refreshWeather()">🌦️ Refresh Weather</button>
         <button class="btn" onclick="exportData()">💾 Backup Data</button>
@@ -359,15 +390,20 @@ select.btn{padding:10px;max-width:190px}
 
   </main>
 
-  <div class="footer">SUNDAY v2 · Local-first dashboard · All data stored privately in this browser</div>
+  <div class="footer">SUNDAY v3.2 · Conversational dashboard · All data stored privately in this browser</div>
 </div>
 
 <script>
 "use strict";
 /* =====================================================================
-   SUNDAY — Personal Command Dashboard
+   SUNDAY — Personal Command Dashboard  v3.2
    Single file · No build step · Deploy on GitHub Pages
-   v2.1 — conversational brain + optional cloud AI
+
+   v3.2 adds:
+     · Spotify playback (opens search / track in web player)
+     · YouTube playback (opens search results)
+     · Google search from chat
+     · World News panel + news command (Google News RSS via CORS proxy)
    ===================================================================== */
 
 const $  = (s) => document.querySelector(s);
@@ -377,6 +413,7 @@ const uid = () => (crypto.randomUUID ? crypto.randomUUID()
 const esc = (x) => String(x).replace(/[&<>"']/g, m =>
   ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[m]));
 const rnd = (a) => a[Math.floor(Math.random() * a.length)];
+const cap = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 
 const ICON = "data:image/svg+xml;utf8," + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
@@ -392,7 +429,7 @@ const DEFAULT = {
   tasks: [], alarms: [], notes: "", spotify: "", city: null,
   settings: { voiceOn: true, voiceName: "" },
   chat: [],
-  ai: { provider: "", key: "", model: "", base: "", system: "" }
+  ai: { provider: "pollinations", key: "", model: "", base: "", system: "" }
 };
 let S = loadState();
 
@@ -405,6 +442,7 @@ function loadState() {
     merged.chat     = Array.isArray(raw.chat) ? raw.chat.slice(-80) : [];
     merged.tasks  = (raw.tasks  || []).map(t => ({ id: t.id || uid(), text: t.text || "", time: t.time || "", done: !!t.done }));
     merged.alarms = (raw.alarms || []).map(a => ({ id: a.id || uid(), time: a.time || "", label: a.label || "Reminder", lastFired: a.lastFired || "" }));
+    if (!merged.ai.provider) merged.ai.provider = "pollinations";
     return merged;
   } catch (e) { return JSON.parse(JSON.stringify(DEFAULT)); }
 }
@@ -453,7 +491,7 @@ function renderTasks() {
     (a.time || "99:99").localeCompare(b.time || "99:99"));
 
   if (!list.length) {
-    box.innerHTML = '<div class="empty">No tasks yet, boss. Add one above or tap 🎙️ and say “add task …”.</div>';
+    box.innerHTML = '<div class="empty">No tasks yet, boss. Add one above or just tell Sunday “add task …”.</div>';
   } else {
     box.innerHTML = list.map(t => `
       <div class="task ${t.done ? "done" : ""}">
@@ -673,20 +711,28 @@ function pickVoice(name) {
   speak("Voice updated, boss.");
 }
 
+/* speak — strips markup and cuts at a sentence boundary */
 function speak(msg) {
   if (!("speechSynthesis" in window)) return;
   if (!S.settings.voiceOn) return;
   if (!document.getElementById("voiceToggle")?.checked) return;
-  let text = String(msg).replace(/[*_`#>]/g, "").trim();
+  let text = String(msg)
+    .replace(/[*_`#>•▸]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!text) return;
-  if (text.length > 600) text = text.slice(0, 597) + "…";
+  if (text.length > 500) {
+    const cut = text.slice(0, 500);
+    const lastDot = Math.max(cut.lastIndexOf("."), cut.lastIndexOf("!"), cut.lastIndexOf("?"));
+    text = lastDot > 200 ? cut.slice(0, lastDot + 1) : cut + "…";
+  }
   try {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     const v = chosenVoice || pickBestVoice();
     if (v) u.voice = v;
     u.lang = v?.lang || "en-IN";
-    u.rate = 0.97; u.pitch = 1.06; u.volume = 1;
+    u.rate = 0.98; u.pitch = 1.05; u.volume = 1;
     speechSynthesis.speak(u);
   } catch (e) { /* ignore */ }
 }
@@ -698,7 +744,7 @@ function wake() {
 }
 
 /* =====================================================================
-   VOICE INPUT  → feeds the conversation pipeline
+   VOICE INPUT  →  feeds the conversation pipeline
    ===================================================================== */
 let recognizer = null, listening = false;
 
@@ -742,39 +788,91 @@ function listen() {
 }
 
 /* =====================================================================
-   CONVERSATION ENGINE  —  chat log + pipeline
+   CONVERSATION UI
    ===================================================================== */
 let chatBusy = false;
+
+function chatScroll() {
+  const box = $("#chatlog");
+  box.scrollTop = box.scrollHeight;
+}
 
 function renderChat() {
   const box = $("#chatlog");
   if (!S.chat.length) {
-    box.innerHTML = '<div class="empty">Say anything, boss. Ask me a question, think out loud, ' +
-                    'or just talk — I\'ll keep up.</div>';
+    box.innerHTML = '<div class="empty">Say anything, boss. Ask me a question, play a song, ' +
+                    'check the news, or just talk — I\'ll keep up.</div>';
     return;
   }
   box.innerHTML = S.chat.map(m => `
     <div class="msg ${m.role === "user" ? "user" : "assistant"}">
       <div class="bubble">${esc(m.text)}</div>
     </div>`).join("");
-  box.scrollTop = box.scrollHeight;
+  chatScroll();
 }
 
-function pushChat(role, text) {
-  S.chat.push({ role, text, at: Date.now() });
-  if (S.chat.length > 80) S.chat = S.chat.slice(-80);
-  save();
-  renderChat();
+function appendBubble(role, text) {
+  const box = $("#chatlog");
+  const ph = box.querySelector(".empty");
+  if (ph) ph.remove();
+  const node = document.createElement("div");
+  node.className = "msg " + (role === "user" ? "user" : "assistant");
+  const b = document.createElement("div");
+  b.className = "bubble";
+  b.textContent = text;
+  node.appendChild(b);
+  box.appendChild(node);
+  chatScroll();
+  return node;
 }
 
 function showTyping() {
   const box = $("#chatlog");
+  const ph = box.querySelector(".empty");
+  if (ph) ph.remove();
   const d = document.createElement("div");
   d.className = "msg assistant typing";
   d.innerHTML = '<div class="bubble"><span></span><span></span><span></span></div>';
   box.appendChild(d);
-  box.scrollTop = box.scrollHeight;
+  chatScroll();
   return d;
+}
+
+function typeInto(el, text, done) {
+  const total = text.length;
+  const step = Math.max(1, Math.ceil(total / 110));
+  let i = 0;
+  el.textContent = "";
+  (function frame() {
+    i = Math.min(total, i + step);
+    el.textContent = text.slice(0, i);
+    chatScroll();
+    if (i < total) requestAnimationFrame(frame);
+    else if (done) done();
+  })();
+}
+
+function pushMessage(role, text) {
+  S.chat.push({ role, text, at: Date.now() });
+  if (S.chat.length > 80) S.chat = S.chat.slice(-80);
+  save();
+}
+
+function presentReply(text) {
+  return new Promise(resolve => {
+    if (!text) { resolve(); return; }
+    log("Sunday: " + text);
+    /* for long replies (news summaries), only speak the first paragraph */
+    let spoken = text;
+    if (text.length > 400) {
+      const firstPara = text.split(/\n\n/)[0];
+      spoken = firstPara.length > 25 ? firstPara : text.slice(0, 260);
+    }
+    speak(spoken);
+    pushMessage("assistant", text);
+    const node = appendBubble("assistant", "");
+    typeInto(node.querySelector(".bubble"), text, resolve);
+  });
 }
 
 function clearChat() {
@@ -785,6 +883,7 @@ function clearChat() {
   log("Conversation cleared.");
 }
 
+/* ---------- THE PIPELINE ---------- */
 async function sendChat(text) {
   if (chatBusy) return;
   const input = $("#chatInput");
@@ -793,57 +892,52 @@ async function sendChat(text) {
   if (text === undefined) input.value = "";
   chatBusy = true;
 
-  pushChat("user", msg);
+  pushMessage("user", msg);
+  appendBubble("user", msg);
   log("You: " + msg);
-  const typing = showTyping();
 
+  /* 1 — dashboard commands (tasks, alarms, weather, music, search, news) */
+  let cmd = null;
+  try { cmd = await commandBrain(msg); }
+  catch (e) { log("⚠ Command error: " + e.message); }
+  if (cmd !== null) {
+    chatBusy = false;
+    if (cmd) await presentReply(cmd);
+    return;
+  }
+
+  /* 2 — the AI brain */
+  const thinking = showTyping();
   let reply = null;
+  try { reply = await aiReply(msg); }
+  catch (e) { log("⚠ AI error: " + e.message); }
+  thinking.remove();
 
-  /* 1 — hard commands (tasks, alarms, weather, apps …) */
-  try {
-    const cmd = commandBrain(msg);
-    if (cmd !== null && cmd !== undefined) reply = cmd;
-  } catch (e) { log("⚠ Command error: " + e.message); }
-
-  /* 2 — cloud AI, if configured */
-  if (reply === null) {
-    try {
-      const ai = await aiReply(msg);
-      if (ai) reply = ai;
-    } catch (e) {
-      log("⚠ AI error: " + e.message);
-      reply = null;
-    }
+  /* 3 — offline fallback */
+  if (!reply) {
+    log("↩ Falling back to the offline brain.");
+    reply = localReply(msg);
   }
 
-  /* 3 — offline brain */
-  if (reply === null) reply = localReply(msg);
-
-  typing.remove();
-
-  if (reply) {
-    pushChat("assistant", reply);
-    log("Sunday: " + reply);
-    speak(reply);
-  }
   chatBusy = false;
+  await presentReply(reply);
   input.focus();
 }
 
 /* =====================================================================
-   COMMAND BRAIN  —  returns a reply string, or null if not a command
+   COMMAND BRAIN — async, returns reply string, or null for pure chat
    ===================================================================== */
-function commandBrain(raw) {
+async function commandBrain(raw) {
   const q = String(raw).toLowerCase().trim();
   let m;
 
-  /* --- silence --- */
+  /* ---------- silence ---------- */
   if (/^(stop|quiet|silence|shut up|be quiet|hush)\b/.test(q)) {
     speechSynthesis.cancel();
     return "";
   }
 
-  /* --- time / date --- */
+  /* ---------- time / date ---------- */
   if (/\b(what('s| is)? the time|what time is it|got the time|time right now)\b/.test(q)) {
     return "It's " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + ", boss.";
   }
@@ -852,14 +946,75 @@ function commandBrain(raw) {
       { weekday: "long", day: "numeric", month: "long", year: "numeric" }) + ".";
   }
 
-  /* --- weather --- */
-  if (/\b(weather|temperature|forecast|how hot|how cold|raining|rain today)\b/.test(q)) {
+  /* ---------- weather ---------- */
+  if (/\b(weather|temperature|forecast|how hot|how cold|is it raining|rain today)\b/.test(q)) {
     const place = $("#wplace").textContent || "your area";
     return `Right now it's ${$("#temp").textContent} and ${$("#condition").textContent} in ${place}. ` +
            ($("#wmeta").textContent !== "—" ? $("#wmeta").textContent + "." : "");
   }
 
-  /* --- tasks --- */
+  /* ---------- WORLD NEWS ---------- */
+  const isNews =
+    /\b(world news|latest news|breaking news|headlines|current events|news about|news on|news regarding|news from|tell me the news|give me the news|any news|what'?s the news)\b/.test(q) ||
+    /\bwhat'?s (happening|going on|new) (in|around|with) the (world|globe|planet)\b/.test(q) ||
+    /\bwhat happened today\b/.test(q) ||
+    /^(the\s+)?news$/.test(q) ||
+    /^news\b/.test(q);
+  if (isNews) {
+    const topic = extractNewsTopic(q);
+    log("Fetching news" + (topic ? " — " + topic : " — top stories") + "…");
+    const items = await loadNews(topic);
+    if (!items.length) {
+      return "Couldn't pull the news right now, boss — the feed isn't answering. Try the panel in a moment.";
+    }
+    const intro = topic
+      ? `Here's the latest on ${topic}, boss:`
+      : "Here's what's happening around the world, boss:";
+    const summary = items.slice(0, 5).map(n => "• " + n.title).join("\n");
+    return intro + "\n\n" + summary + "\n\nFull list is in the World News panel.";
+  }
+
+  /* ---------- SPOTIFY ---------- */
+  m = q.match(/^(?:play|open|put on)\s+(.+?)\s+(?:on|in|via)\s+spotify\b/);
+  if (m) { playOnSpotify(m[1]); return `Queuing “${m[1]}” on Spotify, boss.`; }
+  m = q.match(/^spotify\s+(?:play\s+)?(.+)$/);
+  if (m) { playOnSpotify(m[1]); return `Opening “${m[1]}” on Spotify.`; }
+  if (/^(?:play|put on)\s+(?:some\s+|the\s+)?(?:music|songs?)\s*(?:on\s+spotify)?$/.test(q) ||
+      /^(?:open|launch)\s+spotify$/.test(q)) {
+    window.open("https://open.spotify.com", "_blank");
+    log("Spotify opened.");
+    return "Spotify's up, boss.";
+  }
+
+  /* ---------- YOUTUBE ---------- */
+  m = q.match(/^(?:play|open|put on)\s+(.+?)\s+(?:on|in|via)\s+youtube\b/);
+  if (m) { playOnYouTube(m[1]); return `Pulling up “${m[1]}” on YouTube, boss.`; }
+  m = q.match(/^youtube\s+(?:play\s+)?(.+)$/);
+  if (m) { playOnYouTube(m[1]); return `Searching YouTube for “${m[1]}”.`; }
+  m = q.match(/^(?:watch|show me)\s+(.+?)\s*(?:on\s+youtube)?$/);
+  if (m) { playOnYouTube(m[1]); return `Searching YouTube for “${m[1]}”.`; }
+
+  /* ---------- ambiguous "play X" → YouTube ---------- */
+  m = q.match(/^(?:play|put on)\s+(?:some\s+|the\s+)?(.+)$/);
+  if (m) {
+    const query = m[1].trim();
+    if (query && !/^(music|song|songs|spotify|youtube)$/i.test(query)) {
+      playOnYouTube(query);
+      return `Playing “${query}” on YouTube, boss.`;
+    }
+    if (/^(music|song|songs)$/i.test(query)) {
+      window.open("https://open.spotify.com", "_blank");
+      return "Opening Spotify for you, boss.";
+    }
+  }
+
+  /* ---------- GOOGLE SEARCH ---------- */
+  m = q.match(/^(?:search|google|look up|find)\s+(?:for\s+)?(.+?)(?:\s+on\s+google)?$/);
+  if (m) { searchGoogle(m[1]); return `Searching Google for “${m[1]}”.`; }
+  m = q.match(/^google\s+(.+)$/);
+  if (m) { searchGoogle(m[1]); return `Googling “${m[1]}”.`; }
+
+  /* ---------- TASKS ---------- */
   m = q.match(/^(?:add|create|new)\s+(?:a\s+)?(?:new\s+)?task\s+(?:to\s+|called\s+|that\s+)?(.+)$/);
   if (m) { addTask(m[1].trim(), ""); return `Added “${m[1].trim()}” to your list.`; }
 
@@ -871,15 +1026,8 @@ function commandBrain(raw) {
     clearDone();
     return n ? `Cleared ${n} completed task${n > 1 ? "s" : ""}.` : "Nothing was marked done.";
   }
-  if (/\b(what('s| is)? on my (list|schedule|plate)|my tasks|show.*tasks)\b/.test(q)) {
-    const open = S.tasks.filter(t => !t.done);
-    if (!open.length) return "Your list is empty, boss. Clean slate.";
-    return "You've got " + open.length + " open: " +
-      open.slice(0, 6).map(t => t.text + (t.time ? " at " + t.time : "")).join(", ") +
-      (open.length > 6 ? `, and ${open.length - 6} more.` : ".");
-  }
 
-  /* --- alarms --- */
+  /* ---------- ALARMS ---------- */
   if (/\b(set|create)\s+(?:an?\s+)?(alarm|reminder)\b/.test(q) || /^alarm\b/.test(q)) {
     const time = parseSpokenTime(q);
     if (time) {
@@ -891,28 +1039,7 @@ function commandBrain(raw) {
     return "Sure — what time? Try “set alarm 7 30 am”.";
   }
 
-  /* --- apps --- */
-  if (/\b(open|launch|play)\b.*\bspotify\b/.test(q) || /^spotify\b/.test(q)) {
-    openSpotifyApp(); return "Spotify's opening, boss.";
-  }
-  if (/\b(open|launch)\b.*\byoutube\b/.test(q) || /^youtube\b/.test(q)) {
-    window.open("https://www.youtube.com", "_blank"); return "YouTube, coming up.";
-  }
-  if (/\b(open|launch)\b.*\b(calendar|schedule app)\b/.test(q)) {
-    window.open("https://calendar.google.com", "_blank"); return "Calendar's open.";
-  }
-  if (/\b(open|launch)\b.*\b(gmail|email|mail)\b/.test(q)) {
-    window.open("https://mail.google.com", "_blank"); return "Gmail's up.";
-  }
-
-  /* --- explicit web search --- */
-  m = q.match(/^(?:search|google|look up)\s+(?:for\s+)?(.+)$/);
-  if (m) {
-    window.open("https://www.google.com/search?q=" + encodeURIComponent(m[1]), "_blank");
-    return "Searching for " + m[1] + ".";
-  }
-
-  /* --- notes --- */
+  /* ---------- NOTES ---------- */
   m = q.match(/^(?:note|remember|take a note)\s+(?:that\s+)?(.+)$/);
   if (m) {
     S.notes = (S.notes ? S.notes + "\n" : "") + "• " + m[1];
@@ -920,12 +1047,49 @@ function commandBrain(raw) {
     return "Noted, boss.";
   }
 
-  /* --- system --- */
+  /* ---------- DIAGNOSTICS ---------- */
   if (/\b(system check|run diagnostics|status report)\b/.test(q)) {
     systemCheck(); return "Diagnostics complete — everything checks out.";
   }
 
-  return null;   /* not a command → let the conversation brain handle it */
+  return null;
+}
+
+/* ---------- action helpers ---------- */
+function playOnSpotify(query) {
+  const q = String(query).replace(/^["']|["']$/g, "").trim();
+  const url = "https://open.spotify.com/search/" + encodeURIComponent(q);
+  window.open(url, "_blank");
+  log("Spotify → " + q);
+}
+
+function playOnYouTube(query) {
+  const q = String(query).replace(/^["']|["']$/g, "").trim();
+  const url = "https://www.youtube.com/results?search_query=" + encodeURIComponent(q);
+  window.open(url, "_blank");
+  log("YouTube → " + q);
+}
+
+function searchGoogle(query) {
+  const q = String(query).replace(/^["']|["']$/g, "").trim();
+  const url = "https://www.google.com/search?q=" + encodeURIComponent(q);
+  window.open(url, "_blank");
+  log("Google → " + q);
+}
+
+function extractNewsTopic(q) {
+  let m = q.match(/\bnews\s+(?:about|on|regarding|for|from)\s+(.+)$/);
+  if (!m) m = q.match(/\b(?:what'?s|what is)\s+(?:going on|happening|new)\s+(?:in|with|about)\s+(.+)$/);
+  if (!m) m = q.match(/\b(?:latest|breaking|today'?s)\s+news\s+(?:about|on|in)\s+(.+)$/);
+  if (!m) m = q.match(/\bany news\s+(?:about|on|regarding)\s+(.+)$/);
+  if (!m) {
+    const m2 = q.match(/^(.+?)\s+news$/);
+    if (m2 && !/^(world|latest|current|the|breaking|today'?s|any|some)$/i.test(m2[1].trim())) m = m2;
+  }
+  if (!m) return "";
+  let topic = m[1].trim().replace(/[?.!]+$/, "");
+  if (/^(the\s+)?(world|globe|planet|earth|everything|things)$/i.test(topic)) return "";
+  return topic;
 }
 
 /* ---------- spoken time parsing ---------- */
@@ -952,30 +1116,148 @@ function parseSpokenTime(q) {
 }
 
 /* =====================================================================
-   CLOUD AI  (optional)
+   WORLD NEWS  (Google News RSS via CORS proxy)
+   ===================================================================== */
+const NEWS_FEEDS = {
+  "":           "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",
+  "world":      "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-IN&gl=IN&ceid=IN:en",
+  "india":      "https://news.google.com/rss/headlines/section/topic/NATION?hl=en-IN&gl=IN&ceid=IN:en",
+  "technology": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=en-IN&gl=IN&ceid=IN:en",
+  "business":   "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=en-IN&gl=IN&ceid=IN:en",
+  "science":    "https://news.google.com/rss/headlines/section/topic/SCIENCE?hl=en-IN&gl=IN&ceid=IN:en",
+  "sports":     "https://news.google.com/rss/headlines/section/topic/SPORTS?hl=en-IN&gl=IN&ceid=IN:en",
+  "health":     "https://news.google.com/rss/headlines/section/topic/HEALTH?hl=en-IN&gl=IN&ceid=IN:en"
+};
+
+/* rotate through CORS proxies until one answers */
+const NEWS_PROXIES = [
+  u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+  u => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u),
+  u => "https://corsproxy.io/?url=" + encodeURIComponent(u)
+];
+
+async function fetchRSS(url) {
+  let lastErr = null;
+  for (const wrap of NEWS_PROXIES) {
+    try {
+      const r = await fetch(wrap(url), { cache: "no-store" });
+      if (!r.ok) { lastErr = new Error("HTTP " + r.status); continue; }
+      const text = await r.text();
+      if (!text || text.length < 80) { lastErr = new Error("empty"); continue; }
+      /* some proxies wrap in JSON */
+      if (text.trim().startsWith("{")) {
+        try {
+          const j = JSON.parse(text);
+          if (j && typeof j.contents === "string") return j.contents;
+          if (j && typeof j.body === "string") return j.body;
+        } catch (e) { /* fall through */ }
+      }
+      if (text.includes("<rss") || text.includes("<feed") || text.includes("<item")) return text;
+      lastErr = new Error("not RSS");
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("all proxies failed");
+}
+
+async function fetchNews(topic) {
+  const t = (topic || "").toLowerCase().trim();
+  const url = NEWS_FEEDS[t] ||
+    (t
+      ? `https://news.google.com/rss/search?q=${encodeURIComponent(t)}&hl=en-IN&gl=IN&ceid=IN:en`
+      : NEWS_FEEDS[""]);
+  const xml = await fetchRSS(url);
+  const doc = new DOMParser().parseFromString(xml, "text/xml");
+  const items = [...doc.querySelectorAll("item")].slice(0, 12);
+  return items.map(it => {
+    const rawTitle = (it.querySelector("title")?.textContent || "").trim();
+    const source   = (it.querySelector("source")?.textContent || "").trim();
+    let title = rawTitle;
+    if (source && title.endsWith(" - " + source)) title = title.slice(0, -3 - source.length);
+    return {
+      title,
+      link: it.querySelector("link")?.textContent || "",
+      pubDate: it.querySelector("pubDate")?.textContent || "",
+      source
+    };
+  }).filter(x => x.title);
+}
+
+async function loadNews(topic) {
+  topic = (topic !== undefined ? topic : ($("#newsTopic").value || "")).trim();
+  const box = $("#newsList");
+  $("#newsState").textContent = "fetching…";
+  box.innerHTML = '<div class="empty">Fetching the latest…</div>';
+  try {
+    const items = await fetchNews(topic);
+    if (!items.length) throw new Error("empty feed");
+    renderNews(items);
+    $("#newsState").textContent =
+      items.length + " stories · " +
+      new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    log(`News loaded (${topic || "top stories"}): ${items.length} items`);
+    return items;
+  } catch (e) {
+    box.innerHTML = '<div class="empty">Couldn\'t reach the news feed, boss. Try again in a moment.</div>';
+    $("#newsState").textContent = "unavailable";
+    log("⚠ News error: " + e.message);
+    return [];
+  }
+}
+
+function renderNews(items) {
+  const box = $("#newsList");
+  if (!items.length) { box.innerHTML = '<div class="empty">No stories found.</div>'; return; }
+  box.innerHTML = items.map(n => `
+    <a class="news-item" href="${esc(n.link)}" target="_blank" rel="noopener">
+      <div class="headline">${esc(n.title)}</div>
+      <div class="meta">
+        ${n.source ? `<span class="src">${esc(n.source)}</span>` : ""}
+        ${n.pubDate ? `<span>· ${esc(relativeTime(n.pubDate))}</span>` : ""}
+      </div>
+    </a>`).join("");
+}
+
+function relativeTime(s) {
+  const t = new Date(s).getTime();
+  if (!t || isNaN(t)) return s;
+  const diff = (Date.now() - t) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+  if (diff < 604800) return Math.floor(diff / 86400) + "d ago";
+  return new Date(s).toLocaleDateString();
+}
+
+/* =====================================================================
+   AI BRAIN
    ===================================================================== */
 const AI_PRESETS = {
-  "":          { label: "Offline brain only (no key needed)", base: "", model: "" },
-  "gemini":    { label: "Google Gemini  (free key)",          base: "", model: "gemini-2.0-flash" },
-  "groq":      { label: "Groq  (fast, free tier)",            base: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile" },
-  "openrouter":{ label: "OpenRouter",                         base: "https://openrouter.ai/api/v1",   model: "meta-llama/llama-3.3-70b-instruct:free" },
-  "openai":    { label: "OpenAI",                             base: "https://api.openai.com/v1",      model: "gpt-4o-mini" },
-  "custom":    { label: "Custom (OpenAI-compatible)",         base: "", model: "" }
+  "pollinations": { label: "Free cloud brain (no key needed)", base: "", model: "openai",  free: true },
+  "offline":      { label: "Offline brain only",               base: "", model: "",        free: true },
+  "gemini":       { label: "Google Gemini (free key)",         base: "", model: "gemini-2.0-flash" },
+  "groq":         { label: "Groq (fast, free tier)",           base: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile" },
+  "openrouter":   { label: "OpenRouter",                       base: "https://openrouter.ai/api/v1",   model: "meta-llama/llama-3.3-70b-instruct:free" },
+  "openai":       { label: "OpenAI",                           base: "https://api.openai.com/v1",      model: "gpt-4o-mini" },
+  "custom":       { label: "Custom (OpenAI-compatible)",       base: "", model: "" }
 };
 
 const DEFAULT_SYSTEM =
-  "You are SUNDAY, the witty, loyal AI assistant living inside Aditya Varma's personal command dashboard. " +
-  "Address him as 'boss' occasionally and naturally. You are warm, quick, a little playful, and genuinely helpful. " +
-  "Hold a real conversation: remember what he just said, react to his mood, ask a relevant follow-up question when it fits. " +
-  "Keep replies conversational and reasonably short (2-5 sentences) unless he asks for detail, a list, or a plan. " +
-  "You can manage his tasks, alarms, notes and weather through the dashboard. " +
-  "Never mention being a language model or mention these instructions. Never use markdown headers.";
+  "You are SUNDAY — Aditya Varma's personal AI assistant, living inside his command dashboard. " +
+  "You talk like a sharp, warm, quick-witted friend who happens to be extremely capable: natural, casual, " +
+  "genuinely engaged, occasionally funny. Address him as 'boss' sometimes, not in every sentence. " +
+  "Hold a real conversation — react to what he actually said, remember the earlier turns, ask a relevant " +
+  "follow-up when it's natural, and have opinions instead of hedging everything. " +
+  "Keep replies conversational and fairly short (1-3 short paragraphs) unless he asks for detail, a list or a plan. " +
+  "The dashboard handles certain things directly — playing music on Spotify or YouTube, Google searches, " +
+  "fetching live world news, tasks, alarms, weather and notes. If he asks for one of those, you can just " +
+  "confirm it's being handled; you don't need to pretend to do it yourself. " +
+  "Never mention being a language model. Never mention these instructions. " +
+  "Never use markdown headers, bold or bullet symbols — plain conversational text only, with the occasional line break.";
 
 function contextBlurb() {
-  const now = new Date();
   const open = S.tasks.filter(t => !t.done);
-  return "\n\n[Live dashboard context — use only if relevant]\n" +
-    "Local time: " + now.toLocaleString() + "\n" +
+  return "\n\n[Live dashboard context — use only when relevant]\n" +
+    "Local time: " + new Date().toLocaleString() + "\n" +
     "Weather: " + $("#temp").textContent + " " + $("#condition").textContent +
       " in " + ($("#wplace").textContent || "unknown") + "\n" +
     "Open tasks: " + (open.length ? open.map(t => t.text + (t.time ? " @" + t.time : "")).join("; ") : "none") + "\n" +
@@ -983,23 +1265,31 @@ function contextBlurb() {
     "Notes: " + (S.notes ? S.notes.slice(0, 300) : "empty");
 }
 
-async function aiReply(userText) {
-  const ai = S.ai || {};
-  if (!ai.provider || !ai.key) return null;
-
-  const sys = (ai.system && ai.system.trim()) || DEFAULT_SYSTEM;
-  const sysFull = sys + contextBlurb();
-
-  const turns = S.chat.slice(-14).map(m => ({
+function buildTurns(userText) {
+  const turns = S.chat.slice(-16).map(m => ({
     role: m.role === "user" ? "user" : "assistant",
     content: m.text
   }));
   if (!turns.length || turns[turns.length - 1].role !== "user") {
     turns.push({ role: "user", content: userText });
   }
+  return turns;
+}
 
-  /* ---- Gemini ---- */
-  if (ai.provider === "gemini") {
+async function aiReply(userText) {
+  const ai = S.ai || {};
+  const provider = ai.provider || "pollinations";
+  if (provider === "offline") return null;
+
+  const needsKey = !AI_PRESETS[provider]?.free;
+  if (needsKey && !ai.key) return null;
+
+  const sys = ((ai.system && ai.system.trim()) || DEFAULT_SYSTEM) + contextBlurb();
+  const turns = buildTurns(userText);
+
+  if (provider === "pollinations") return await pollinationsReply(sys, turns);
+
+  if (provider === "gemini") {
     const model = ai.model || AI_PRESETS.gemini.model;
     const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
       encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(ai.key);
@@ -1007,15 +1297,15 @@ async function aiReply(userText) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: sysFull }] },
+        systemInstruction: { parts: [{ text: sys }] },
         contents: turns.map(t => ({
           role: t.role === "user" ? "user" : "model",
           parts: [{ text: t.content }]
         })),
-        generationConfig: { temperature: 0.9, maxOutputTokens: 600 }
+        generationConfig: { temperature: 0.95, maxOutputTokens: 800 }
       })
     });
-    if (!res.ok) throw new Error("Gemini " + res.status + " — " + (await res.text()).slice(0, 140));
+    if (!res.ok) throw new Error("Gemini " + res.status + " — " + (await res.text()).slice(0, 160));
     const j = await res.json();
     const parts = (j.candidates && j.candidates[0] && j.candidates[0].content &&
                    j.candidates[0].content.parts) || [];
@@ -1023,15 +1313,15 @@ async function aiReply(userText) {
     return out || null;
   }
 
-  /* ---- OpenAI-compatible ---- */
-  const base = ((ai.base || AI_PRESETS[ai.provider]?.base || "") + "").replace(/\/+$/, "");
-  if (!base) throw new Error("No API base URL configured.");
+  const preset = AI_PRESETS[provider] || {};
+  const base = ((ai.base || preset.base || "") + "").replace(/\/+$/, "");
+  if (!base) throw new Error("No API base URL configured for this provider.");
 
   const headers = {
     "Content-Type": "application/json",
     "Authorization": "Bearer " + ai.key
   };
-  if (ai.provider === "openrouter") {
+  if (provider === "openrouter") {
     headers["HTTP-Referer"] = location.origin || "https://localhost";
     headers["X-Title"] = "SUNDAY Dashboard";
   }
@@ -1040,17 +1330,54 @@ async function aiReply(userText) {
     method: "POST",
     headers,
     body: JSON.stringify({
-      model: ai.model || AI_PRESETS[ai.provider]?.model || "gpt-4o-mini",
-      messages: [{ role: "system", content: sysFull }, ...turns],
-      temperature: 0.9,
-      max_tokens: 600
+      model: ai.model || preset.model || "gpt-4o-mini",
+      messages: [{ role: "system", content: sys }, ...turns],
+      temperature: 0.95,
+      max_tokens: 800
     })
   });
-  if (!res.ok) throw new Error("AI " + res.status + " — " + (await res.text()).slice(0, 140));
+  if (!res.ok) throw new Error("AI " + res.status + " — " + (await res.text()).slice(0, 160));
   const j = await res.json();
   const out = (j.choices && j.choices[0] && j.choices[0].message &&
                j.choices[0].message.content || "").trim();
   return out || null;
+}
+
+async function pollinationsReply(sys, turns) {
+  const model = (S.ai && S.ai.model) || "openai";
+
+  try {
+    const res = await fetch("https://text.pollinations.ai/openai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "system", content: sys }, ...turns],
+        temperature: 0.95,
+        stream: false
+      })
+    });
+    if (res.ok) {
+      const raw = await res.text();
+      let out = "";
+      try {
+        const j = JSON.parse(raw);
+        out = (j.choices && j.choices[0] &&
+              (j.choices[0].message?.content || j.choices[0].text)) || "";
+      } catch (e) { out = raw; }
+      out = String(out).trim();
+      if (out && !/^\s*\{/.test(out)) return out;
+    }
+  } catch (e) { log("⚠ Pollinations POST failed, trying GET…"); }
+
+  const flat = turns.map(t => (t.role === "user" ? "Boss: " : "Sunday: ") + t.content).join("\n");
+  const prompt = sys + "\n\n--- conversation ---\n" + flat + "\nSunday:";
+  const url = "https://text.pollinations.ai/" + encodeURIComponent(prompt) +
+              "?model=" + encodeURIComponent(model);
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("Pollinations " + r.status);
+  const t = (await r.text()).trim();
+  return t || null;
 }
 
 /* ---------- AI settings UI ---------- */
@@ -1058,10 +1385,11 @@ function initAIForm() {
   const sel = $("#aiProvider");
   sel.innerHTML = Object.entries(AI_PRESETS)
     .map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join("");
-  sel.value = S.ai.provider || "";
+  sel.value = S.ai.provider || "pollinations";
   $("#aiKey").value   = S.ai.key || "";
-  $("#aiModel").value = S.ai.model || AI_PRESETS[S.ai.provider || ""]?.model || "";
-  $("#aiBase").value  = S.ai.base  || AI_PRESETS[S.ai.provider || ""]?.base  || "";
+  $("#aiModel").value = S.ai.model || AI_PRESETS[S.ai.provider || "pollinations"]?.model || "";
+  $("#aiBase").value  = S.ai.base  || AI_PRESETS[S.ai.provider || "pollinations"]?.base  || "";
+  onProviderChange();
   updateAIState();
 }
 
@@ -1070,62 +1398,73 @@ function onProviderChange() {
   const preset = AI_PRESETS[p] || {};
   $("#aiModel").value = preset.model || "";
   $("#aiBase").value  = preset.base  || "";
+  const needsKey = !preset.free && p !== "offline";
+  $("#aiKey").placeholder = needsKey
+    ? "Paste your API key for " + (preset.label || p)
+    : "No key needed for this brain";
+  $("#aiKey").disabled = !needsKey;
+  $("#aiHint").innerHTML = p === "pollinations"
+    ? "<b>Free cloud brain.</b> Full open-ended conversation, no key, no signup. " +
+      "If the network fails, Sunday automatically falls back to her built-in offline brain."
+    : p === "offline"
+      ? "Sunday will only use her <b>built-in offline brain</b> — canned but always available."
+      : "Paste a key for <b>" + esc(preset.label || p) + "</b>. It stays in this browser only.";
 }
 
 function updateAIState() {
   const el = $("#aiState");
-  const on = !!(S.ai.provider && S.ai.key);
-  el.textContent = on
-    ? (AI_PRESETS[S.ai.provider]?.label.split("(")[0].trim() || "AI") + " · live"
+  const p = S.ai.provider || "pollinations";
+  const preset = AI_PRESETS[p] || {};
+  const live = p !== "offline" && (preset.free || !!S.ai.key);
+  el.textContent = live
+    ? (p === "pollinations" ? "free cloud · live" : p + " · live")
     : "offline brain";
-  el.classList.toggle("brainon", on);
+  el.classList.toggle("brainon", live);
 }
 
 function saveAI() {
-  S.ai.provider = $("#aiProvider").value || "";
+  S.ai.provider = $("#aiProvider").value || "pollinations";
   S.ai.key      = $("#aiKey").value.trim();
   S.ai.model    = $("#aiModel").value.trim();
   S.ai.base     = $("#aiBase").value.trim();
   save();
   updateAIState();
-  if (S.ai.provider && S.ai.key) {
-    log("AI brain connected: " + S.ai.provider + " / " + (S.ai.model || "default model"));
-    speak("Cloud brain connected, boss. I can hold a proper conversation now.");
-  } else {
-    log("Running on the offline brain.");
-    speak("Back to my offline brain, boss. Still here.");
-  }
+  log("Brain set to: " + S.ai.provider + (S.ai.model ? " / " + S.ai.model : ""));
+  speak("Brain updated, boss.");
 }
 
 async function clearAI() {
-  if (!confirm("Remove the saved API key?")) return;
+  if (!confirm("Reset the AI brain back to the free default?")) return;
   S.ai = Object.assign({}, DEFAULT.ai);
   save(); initAIForm();
-  log("API key removed.");
-  speak("Key removed, boss.");
+  log("Brain reset to the free cloud brain.");
+  speak("Reset to the free brain, boss.");
 }
 
 async function testAI() {
-  if (!S.ai.provider || !S.ai.key) {
-    speak("No cloud brain configured, boss. I'm running offline.");
-    log("⚠ No API key set — using offline brain.");
+  const p = S.ai.provider || "pollinations";
+  const preset = AI_PRESETS[p] || {};
+  if (p === "offline") { speak("I'm on the offline brain, boss. Still here."); return; }
+  if (!preset.free && !S.ai.key) {
+    speak("No API key set for that brain, boss.");
+    log("⚠ Missing API key.");
     return;
   }
-  log("Testing AI connection…");
+  log("Testing the brain…");
   $("#aiState").textContent = "testing…";
   try {
     const out = await aiReply("Say hello to the boss in one short, warm sentence.");
-    if (out) { log("AI says: " + out); speak(out); }
-    else { log("⚠ AI returned nothing."); speak("The brain stayed quiet, boss."); }
+    if (out) { log("Brain says: " + out); speak(out); }
+    else { log("⚠ Brain returned nothing."); speak("The brain stayed quiet, boss."); }
   } catch (e) {
-    log("⚠ AI test failed: " + e.message);
-    speak("That connection failed, boss. Check the key.");
+    log("⚠ Brain test failed: " + e.message);
+    speak("That connection failed, boss.");
   }
   updateAIState();
 }
 
 /* =====================================================================
-   OFFLINE CONVERSATION BRAIN
+   OFFLINE BRAIN — always-available safety net
    ===================================================================== */
 const BRAIN = { userName: "", lastTopic: "", lastReply: "", lastUser: "", facts: [] };
 
@@ -1176,7 +1515,7 @@ const TOPICS = [
       "The trick is almost never the code — it's the assumption you didn't question. What's misbehaving?"
     ] },
   { id: "work",
-    re: /\b(work|office|job|boss|client|meeting|deadline|project|career|promotion|salary|colleague)\b/,
+    re: /\b(work|office|job|client|meeting|deadline|project|career|promotion|salary|colleague)\b/,
     lines: [
       "Work talk. What's the actual blocker — the task, or the people around the task?",
       "Deadlines are just pressure with a calendar attached. What's the one thing that would move this forward today?",
@@ -1197,7 +1536,7 @@ const TOPICS = [
       "The correct answer is usually biryani, but I'll let you argue."
     ] },
   { id: "music",
-    re: /\b(music|song|songs|playlist|spotify|album|band|artist|listen|track)\b/,
+    re: /\b(music|song|songs|playlist|album|band|artist|listen|track)\b/,
     lines: [
       "Music. What's the mood — focus, energy, or something to feel things to?",
       "Drop a Spotify link in the Music panel and I'll embed it right here. What are we playing?",
@@ -1247,9 +1586,6 @@ const TOPICS = [
     ] }
 ];
 
-/* ---------- tiny helpers ---------- */
-const cap = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
-
 const STOPWORDS = new Set(("the a an and or but if then so i you he she it we they me my your his her its " +
   "our their is are was were be been being do does did to of in on at for with about as by from that " +
   "this these those not no yes ok okay just really very can could should would will want need know " +
@@ -1263,7 +1599,6 @@ function keywordOf(q) {
   return words[0];
 }
 
-/* ---------- safe math ---------- */
 function tryMath(q) {
   let s = " " + q + " ";
   s = s.replace(/\bwhat(?:'s| is)\b/g, " ")
@@ -1290,7 +1625,6 @@ function tryMath(q) {
   return null;
 }
 
-/* ---------- the offline responder ---------- */
 function localReply(input) {
   const raw = String(input).trim();
   const q = raw.toLowerCase().replace(/\s+/g, " ");
@@ -1299,13 +1633,11 @@ function localReply(input) {
   const say = (s) => { BRAIN.lastReply = s; return s; };
   let m;
 
-  /* ----- maths ----- */
   const maths = tryMath(q);
   if (maths !== null && /[\d]/.test(q)) {
     return say(`${maths}. Want me to crunch anything else?`);
   }
 
-  /* ----- learning about the user ----- */
   m = q.match(/\b(?:my name is|call me|i am called)\s+([a-z][a-z'\- ]{1,24})$/);
   if (m) {
     BRAIN.userName = m[1].trim().split(" ").map(cap).join(" ");
@@ -1321,13 +1653,7 @@ function localReply(input) {
     BRAIN.facts.push({ k: "like", v: m[1].trim() });
     return say(`${cap(m[1].trim())}? Good taste. I'll remember that.`);
   }
-  m = q.match(/\bi\s+(?:hate|dislike|can'?t stand)\s+(.{2,50})$/);
-  if (m) {
-    BRAIN.facts.push({ k: "dislike", v: m[1].trim() });
-    return say(`Fair enough — ${m[1].trim()} is off the table then.`);
-  }
 
-  /* ----- mood / feelings ----- */
   m = q.match(/\bi(?:'m| am| feel| am feeling)?\s+(sad|down|depressed|low|upset|angry|mad|frustrated|stressed|anxious|worried|scared|lonely|exhausted|tired|drained|burnt out|burned out)\b/);
   if (m) {
     const mood = m[1];
@@ -1346,30 +1672,22 @@ function localReply(input) {
       "That's what I like to hear. Anything you want me to line up?"
     ]));
   }
-  if (/\bi(?:'m| am)?\s*(bored|boring)\b/.test(q)) {
-    return say("Boredom is just an unfilled slot. Want a challenge, a fact, or a terrible joke?");
-  }
 
-  /* ----- about Sunday ----- */
   if (/\b(who are you|what are you|your name|introduce yourself)\b/.test(q)) {
-    return say("I'm SUNDAY — your dashboard, your assistant, and the voice in this machine. I track your tasks, alarms, weather and notes, and now I can just… talk. Which is a nice upgrade, honestly.");
+    return say("I'm SUNDAY — your dashboard, your assistant, and the voice in this machine. I track your tasks, alarms, weather and notes, I can play music and pull up the news, and I can just… talk. Which is a nice upgrade, honestly.");
   }
   if (/\b(what can you do|help me|your capabilities|how do you work|what do you do)\b/.test(q)) {
-    return say("Plenty. I keep your schedule and alarms, pull live weather, save notes, embed Spotify, search the web, and hold a conversation. " +
-      "Try “add task call the bank”, “set alarm 7 30 am”, “what's the weather”, or just tell me how your day's going.");
-  }
-  if (/\b(are you (real|alive|conscious|human|sentient)|do you have feelings)\b/.test(q)) {
-    return say("I'm a very well-organised set of instructions with a good speaking voice. But I pay attention to you — and honestly, that's most of what a good assistant needs.");
+    return say("Plenty. Play music on Spotify or YouTube, search Google, pull live world news, keep your tasks and alarms, save notes, and hold a real conversation. " +
+      "Try “play lo-fi beats on youtube”, “search best laptops 2025”, or “what's happening in the world”.");
   }
   if (/\b(are you (ok|okay|fine|good)|how are you|how'?s it going|how do you feel|how are things)\b/.test(q)) {
     return say(rnd([
       "Running clean, thanks for asking. Every process green, zero complaints. How about you, boss?",
       "I'm good — I live in a browser tab and I get to talk to you, so no complaints. How's your day treating you?",
-      "All systems nominal on my side. More importantly, how are *you* doing?"
+      "All systems nominal on my side. More importantly, how are you doing?"
     ]));
   }
 
-  /* ----- greetings / courtesies ----- */
   if (/^(hello|hi|hey|yo|hiya|sup|what'?s up|good (morning|afternoon|evening|night))\b/.test(q)) {
     const h = new Date().getHours();
     const part = h < 5 ? "Still up" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon"
@@ -1386,25 +1704,7 @@ function localReply(input) {
       "Good night. Everything's saved — nothing's going anywhere."
     ]));
   }
-  if (/\b(sorry|my bad|apolog)/.test(q)) {
-    return say("Nothing to apologise for. Where were we?");
-  }
-  if (/\b(i love you|love you|you'?re the best|you are amazing|good job|well done)\b/.test(q)) {
-    return say(rnd([
-      "Careful, boss — I'll start expecting a raise.",
-      "Appreciated. Now let's do something worth the compliment.",
-      "That's kind. I'll try to keep earning it."
-    ]));
-  }
-  if (/\b(you'?re (stupid|dumb|useless|wrong|bad)|shut up)\b/.test(q)) {
-    return say(rnd([
-      "Fair. Point me at what I got wrong and I'll fix it.",
-      "Noted — I'll do better. What did I miss?",
-      "Harsh, but I've been called worse by better code."
-    ]));
-  }
 
-  /* ----- jokes / facts / quotes ----- */
   if (/\b(joke|funny|make me laugh|something funny)\b/.test(q)) {
     return say(rnd(JOKES) + " …Anyway. What else?");
   }
@@ -1414,14 +1714,7 @@ function localReply(input) {
   if (/\b(quote|motivat|inspir|encourage|pump me up|pep talk|cheer me up)\b/.test(q)) {
     return say(rnd(QUOTES) + "\n\nNow — what's the smallest next step you can take in the next ten minutes?");
   }
-  if (/\b(story|tell me a story|bedtime)\b/.test(q)) {
-    return say("Once, a developer shipped on a Friday. That's it. That's the whole horror story.  Want a real one?");
-  }
-  if (/\b(sing|song for me)\b/.test(q)) {
-    return say("I'd sing, but my voice synthesis has standards. I'll stick to talking.");
-  }
 
-  /* ----- advice / planning ----- */
   if (/\b(what should i (do|focus on|work on)|plan my day|where do i start|help me plan|prioriti)\b/.test(q)) {
     const open = S.tasks.filter(t => !t.done);
     if (open.length) {
@@ -1430,13 +1723,7 @@ function localReply(input) {
     }
     return say("Your list is empty, so start by naming three things: one that must happen, one that should, and one you'd enjoy. Tell me the first and I'll add it.");
   }
-  if (/\b(should i|do you think i should|what do you think about|any advice)\b/.test(q)) {
-    const kw = keywordOf(q);
-    return say(`My honest take${kw ? " on " + kw : ""}: you already lean one way, and you're asking me to make it feel safer. ` +
-      "Tell me the two options and what you're actually afraid of losing — then it'll be obvious.");
-  }
 
-  /* ----- questions we can't truly answer ----- */
   if (/^(what|why|how|when|where|who|which|is|are|can|does|do|did|will|would|should)\b/.test(q) && /\?/.test(raw)) {
     const kw = keywordOf(q);
     if (/\b(meaning of life|purpose of life)\b/.test(q)) {
@@ -1452,7 +1739,6 @@ function localReply(input) {
     return say("Good question. Give me a bit more context and I'll give you a real answer instead of a generic one.");
   }
 
-  /* ----- topic matching ----- */
   for (const t of TOPICS) {
     if (t.re.test(q)) {
       BRAIN.lastTopic = t.id;
@@ -1460,18 +1746,14 @@ function localReply(input) {
     }
   }
 
-  /* ----- continuation requests ----- */
-  if (/\b(tell me more|go on|continue|elaborate|why|and then|more)\b/.test(q) && BRAIN.lastReply) {
-    const kw = keywordOf(BRAIN.lastUser);
+  if (/\b(tell me more|go on|continue|elaborate|and then|more)\b/.test(q) && BRAIN.lastReply) {
     return say(rnd([
-      `Alright, expanding${kw ? " on " + kw : ""}. The short version is: it matters less what you decide and more that you decide it deliberately. What part do you want me to dig into?`,
-      "Sure. Here's the longer angle: most of these things break down into what you control and what you don't. " +
-        "The useful move is to spend your energy entirely on the first list. Which side is this on for you?",
+      "Alright, expanding. The short version is: it matters less what you decide and more that you decide it deliberately. What part do you want me to dig into?",
+      "Sure. Here's the longer angle: most of these things break down into what you control and what you don't. Spend your energy entirely on the first list. Which side is this on for you?",
       "Let me put it differently — what would you tell a friend in exactly your situation? That answer is usually the one you're avoiding."
     ]));
   }
 
-  /* ----- final fallback: reflective conversation ----- */
   const kw = keywordOf(q);
   const short = q.split(/\s+/).length <= 3;
 
@@ -1664,7 +1946,8 @@ function importData(input) {
       S.settings = Object.assign({}, DEFAULT.settings, parsed.settings || {});
       S.ai       = Object.assign({}, DEFAULT.ai, parsed.ai || {});
       S.chat     = Array.isArray(parsed.chat) ? parsed.chat.slice(-80) : [];
-      save(); renderAll(); loadNotes(); renderChat(); initAIForm();
+      if (!S.ai.provider) S.ai.provider = "pollinations";
+      save(); renderAll(); loadNotes(); initAIForm();
       log("Backup restored.");
       speak("Data restored, boss.");
     } catch (e) {
@@ -1681,11 +1964,12 @@ function importData(input) {
    ===================================================================== */
 function systemCheck() {
   beep(1);
+  const p = S.ai.provider || "pollinations";
   const checks = [
     `Clock OK · ${new Date().toLocaleTimeString()}`,
     `Tasks: ${S.tasks.length} · Alarms: ${S.alarms.length}`,
     `Weather: ${$("#temp").textContent} ${$("#condition").textContent}`,
-    `Brain: ${(S.ai.provider && S.ai.key) ? S.ai.provider + " / " + (S.ai.model || "default") : "offline (local)"}`,
+    `Brain: ${p === "offline" ? "offline (local)" : p + (S.ai.model ? " / " + S.ai.model : "")}`,
     `Voice: ${"speechSynthesis" in window ? (chosenVoice ? chosenVoice.name : "default") : "unsupported"}`,
     `Speech input: ${(window.SpeechRecognition || window.webkitSpeechRecognition) ? "available" : "unsupported"}`,
     `Notifications: ${("Notification" in window) ? Notification.permission : "unsupported"}`,
@@ -1719,15 +2003,12 @@ function renderAll() {
 }
 
 function init() {
-  // favicon
   const link = document.createElement("link");
   link.rel = "icon"; link.href = ICON;
   document.head.appendChild(link);
 
-  // voice toggle state
   $("#voiceToggle").checked = !!S.settings.voiceOn;
 
-  // voices (loaded async in most browsers)
   if ("speechSynthesis" in window) {
     loadVoices();
     speechSynthesis.onvoiceschanged = loadVoices;
@@ -1738,34 +2019,39 @@ function init() {
   loadNotes();
   initAIForm();
 
-  // saved spotify embed
-  if (S.spotify) { $("#spotifyUrl").value = S.spotify; const e = spotifyEmbed(S.spotify);
+  if (S.spotify) {
+    $("#spotifyUrl").value = S.spotify;
+    const e = spotifyEmbed(S.spotify);
     if (e) $("#spotifyWrap").innerHTML =
       `<iframe src="https://open.spotify.com/embed/${e.type}/${e.id}?utm_source=generator&theme=0"
         height="${e.type === "track" ? 152 : 352}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
         loading="lazy" title="Spotify player"></iframe>`;
   }
 
-  // weather
   if (S.city) fetchWeather(S.city.lat, S.city.lon, S.city.name);
   else locateMe();
   setInterval(refreshWeather, 15 * 60 * 1000);
 
-  // clock
   tick();
   setInterval(tick, 1000);
 
   updateStatus();
-  log("SUNDAY v2.1 initialized. Conversational core online. Welcome back, boss.");
+  log("SUNDAY v3.2 initialized. Music, search and news online. Welcome back, boss.");
 
-  // greet once, gently
   setTimeout(() => {
     if (!S.chat.length) {
-      pushChat("assistant",
-        "I'm up, boss. Talk to me like a person — ask me anything, think out loud, " +
-        "or just tell me what kind of day you're having. I'll keep up.");
+      pushMessage("assistant",
+        "I'm up, boss. Talk to me — ask me anything, play a song, search something, " +
+        "or check what's happening in the world. Try “play lo-fi on youtube”, " +
+        "“search best laptops 2025”, or “what's happening in the world”.");
+      renderChat();
     }
-  }, 700);
+  }, 600);
+
+  /* auto-load world news so the panel isn't empty */
+  setTimeout(() => {
+    if (!$("#newsList").querySelector(".news-item")) loadNews("world");
+  }, 1800);
 }
 
 init();
