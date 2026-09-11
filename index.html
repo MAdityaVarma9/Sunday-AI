@@ -1253,6 +1253,51 @@ const NEWS_FEEDS = {
 let lastNewsItems = [];
 let lastNewsTopic = "";
 
+/* ---------- direct, proxy-free source: Reddit's public JSON API ----------
+   Reddit serves its .json endpoints with open CORS headers, so this can be
+   fetched straight from the browser with NO third-party proxy involved.
+   That makes it immune to the "every free CORS proxy is rate-limited /
+   blocked by this carrier" failure mode that takes down the proxy chain. */
+const NEWS_REDDIT_SUBS = {
+  "":           "worldnews+news+UpliftingNews",
+  "world":      "worldnews",
+  "india":      "india",
+  "technology": "technology",
+  "business":   "business+economy",
+  "science":    "science",
+  "sports":     "sports",
+  "health":     "health"
+};
+
+async function fetchRedditNews(topic, timeoutMs = 9000) {
+  const t = (topic || "").toLowerCase().trim();
+  const sub = NEWS_REDDIT_SUBS[t];
+  const url = sub
+    ? `https://www.reddit.com/r/${sub}/hot.json?limit=20&raw_json=1`
+    : `https://www.reddit.com/search.json?q=${encodeURIComponent(t)}&sort=new&limit=20&raw_json=1`;
+  const res = await fetchWithTimeout(url, timeoutMs);
+  if (!res.ok) throw new Error("reddit: HTTP " + res.status);
+  const j = await res.json();
+  const kids = j && j.data && j.data.children;
+  if (!kids || !kids.length) throw new Error("reddit: no items");
+  const items = kids
+    .filter(c => c && c.data && c.data.title && !c.data.stickied)
+    .slice(0, 16)
+    .map(c => {
+      const d = c.data;
+      const isSelfOrReddit = !d.url || d.url.includes("reddit.com") || d.is_self;
+      return {
+        title: cleanHeadline(d.title),
+        link: !isSelfOrReddit ? d.url : "https://www.reddit.com" + d.permalink,
+        pubDate: d.created_utc ? new Date(d.created_utc * 1000).toUTCString() : "",
+        source: "r/" + (d.subreddit || "reddit")
+      };
+    })
+    .filter(x => x.title);
+  if (!items.length) throw new Error("reddit: filtered empty");
+  return items;
+}
+
 /* ---------- helpers ---------- */
 function fetchWithTimeout(url, ms) {
   const ctrl = new AbortController();
@@ -1456,6 +1501,14 @@ async function fetchNews(topic) {
       .catch(e => { log("  ✕ " + (e && e.message ? e.message : src.name + " failed")); throw e; })
   );
 
+  /* Reddit needs no proxy — add it to the same race. It's often the fastest
+     to resolve precisely because it skips the proxy hop entirely. */
+  racers.unshift(
+    fetchRedditNews(t, 9000)
+      .then(items => { log("News source OK: reddit-direct (" + items.length + " items)"); return items; })
+      .catch(e => { log("  ✕ " + (e && e.message ? e.message : "reddit-direct failed")); throw e; })
+  );
+
   const items = await firstSuccess(racers);
   cacheNews(t, items);
   return items;
@@ -1508,10 +1561,10 @@ function showNewsError(topic, err) {
   box.innerHTML = `
     <div class="news-error" style="grid-column:1/-1">
       <b>Couldn't reach any news source, boss.</b><br>
-      Every proxy I tried refused the request (all ${NEWS_SOURCES.length} of them). This usually means
-      the network is blocking them, you're offline, or you opened this file from <code>file://</code>
-      (serve it over <code>http://</code>/<code>https://</code> for best results — most proxies
-      reject requests from <code>file://</code> origins).
+      Every source I tried refused the request (Reddit direct + ${NEWS_SOURCES.length} proxies —
+      all failed). This usually means the network is blocking them, you're offline, or you opened
+      this file from <code>file://</code> (serve it over <code>http://</code>/<code>https://</code>
+      for best results — most proxies reject requests from <code>file://</code> origins).
       <div class="controls">
         <button class="btn primary" onclick="loadNews('${esc(topic || "")}')">↻ Retry</button>
         <button class="btn" onclick="window.open('${esc(googleUrl)}','_blank')">Open Google News</button>
