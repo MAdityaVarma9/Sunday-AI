@@ -376,6 +376,28 @@ canvas.bgfx{
   50%{box-shadow:0 0 0 12px rgba(255,70,70,0)}
 }
 
+.btn.wakeword{
+  border-radius:50%;width:44px;height:44px;font-size:16px;padding:0;
+  display:grid;place-items:center;flex:0 0 auto;
+}
+.btn.wakeword.on{
+  background:linear-gradient(180deg,rgba(125,255,168,.35),rgba(125,255,168,.12));
+  border-color:var(--green);
+  animation:wakePulse 2.2s ease-in-out infinite;
+}
+@keyframes wakePulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(125,255,168,.5)}
+  50%{box-shadow:0 0 0 10px rgba(125,255,168,0)}
+}
+
+.msg.system .bubble{
+  background:rgba(255,107,107,.08);
+  border:1px solid rgba(255,107,107,.28);
+  color:#ffb6b6;
+  font-size:12.5px;
+  font-family:var(--mono);
+}
+
 /* --------------------------------------------------------------------------
    INPUTS
    -------------------------------------------------------------------------- */
@@ -762,6 +784,7 @@ input[type="time"]{color-scheme:dark}
       <div class="controls" style="margin-top:18px">
         <button class="btn primary" onclick="wake()">🔊 Wake Sunday</button>
         <button class="btn mic" id="micBtn" onclick="listen()" title="Voice command">🎙️</button>
+        <button class="btn wakeword" id="wakeBtn" onclick="toggleWakeWord()" title="Toggle hands-free 'Hey Sunday' listening">🛰️</button>
         <button class="btn" onclick="quickAdd()">＋ Quick Task</button>
         <button class="btn" onclick="clearDone()">Clear Done</button>
         <button class="btn danger" onclick="stopSpeaking()" title="Stop Sunday talking">⏹ Stop voice</button>
@@ -1020,7 +1043,7 @@ const DEFAULT = {
   tasks: [], alarms: [], notes: "", spotify: "", city: null,
   settings: { voiceOn: true, voiceName: "" },
   chat: [],
-  ai: { provider: "pollinations", key: "", model: "", base: "", system: "" }
+  ai: { provider: "gemini", key: "", model: "", base: "", system: "" }
 };
 let S = loadState();
 
@@ -1435,6 +1458,7 @@ function listen() {
   recognizer.onstart = () => {
     listening = true;
     stopSpeaking();
+    if (wakeMode) { clearTimeout(wakeRestartTimer); if (wakeRecognizer) { try { wakeRecognizer.onend = null; wakeRecognizer.stop(); } catch (e) {} wakeRecognizer = null; } }
     $("#micBtn").classList.add("on");
     $("#status").textContent = "● LISTENING";
     log("Listening…");
@@ -1453,8 +1477,103 @@ function listen() {
     listening = false;
     $("#micBtn").classList.remove("on");
     updateStatus();
+    if (wakeMode) wakeRestartTimer = setTimeout(startWakeListener, 400);
   };
   try { recognizer.start(); } catch (e) { log("⚠ " + e.message); }
+}
+
+/* =====================================================================
+   HANDS-FREE WAKE WORD ("Hey Sunday")
+   ---------------------------------------------------------------------
+   A second, continuous SpeechRecognition instance that stays running in
+   the background, listens for "sunday" / "hey sunday", and either:
+     - sends everything spoken after the wake word straight to sendChat, or
+     - if the wake word was said alone, chimes and opens a one-shot
+       listen() so the boss can say the command next.
+   Chrome/Edge auto-stop continuous recognition after periods of silence,
+   so onend restarts it whenever wake mode is still toggled on.
+   ===================================================================== */
+let wakeMode = false, wakeRecognizer = null, wakeRestartTimer = null;
+const WAKE_RE = /\b(?:hey\s+)?sunday\b[,.]?\s*/i;
+
+function toggleWakeWord() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    alert("Voice input isn't supported in this browser. Try Chrome, Edge or Safari.");
+    return;
+  }
+  wakeMode = !wakeMode;
+  $("#wakeBtn").classList.toggle("on", wakeMode);
+  if (wakeMode) {
+    log("🛰️ Hands-free wake word enabled — say “Hey Sunday …” any time.");
+    speak("Hands-free is on, boss. Just say my name.");
+    startWakeListener();
+  } else {
+    log("🛰️ Hands-free wake word disabled.");
+    stopWakeListener();
+  }
+}
+
+function startWakeListener() {
+  if (!wakeMode) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  try {
+    wakeRecognizer = new SR();
+    wakeRecognizer.lang = "en-IN";
+    wakeRecognizer.interimResults = false;
+    wakeRecognizer.continuous = true;
+    wakeRecognizer.maxAlternatives = 1;
+
+    wakeRecognizer.onresult = (e) => {
+      // Ignore anything picked up while Sunday herself is talking.
+      if (speechSynthesis && speechSynthesis.speaking) return;
+      const last = e.results[e.results.length - 1];
+      if (!last || !last.isFinal) return;
+      const transcript = last[0].transcript || "";
+      if (!WAKE_RE.test(transcript)) return;
+
+      const command = transcript.replace(WAKE_RE, "").trim();
+      if (listening) return; // a manual mic capture is already in progress
+
+      if (command) {
+        beep(1);
+        sendChat(command);
+      } else {
+        beep(1);
+        speak("Yes, boss?");
+        // Give the one-shot recognizer the floor for the actual command.
+        setTimeout(() => { if (wakeMode && !listening) listen(); }, 900);
+      }
+    };
+
+    wakeRecognizer.onerror = (e) => {
+      // "no-speech" fires constantly in continuous mode — that's normal, not an error.
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        log("⚠ Microphone permission denied — hands-free disabled.");
+        wakeMode = false;
+        $("#wakeBtn").classList.remove("on");
+      }
+    };
+
+    wakeRecognizer.onend = () => {
+      if (wakeMode) {
+        clearTimeout(wakeRestartTimer);
+        wakeRestartTimer = setTimeout(startWakeListener, 300);
+      }
+    };
+
+    wakeRecognizer.start();
+  } catch (e) {
+    log("⚠ Hands-free start failed: " + e.message);
+  }
+}
+
+function stopWakeListener() {
+  clearTimeout(wakeRestartTimer);
+  if (wakeRecognizer) {
+    try { wakeRecognizer.onend = null; wakeRecognizer.stop(); } catch (e) {}
+    wakeRecognizer = null;
+  }
 }
 
 /* =====================================================================
@@ -1486,7 +1605,7 @@ function appendBubble(role, text) {
   const ph = box.querySelector(".empty");
   if (ph) ph.remove();
   const node = document.createElement("div");
-  node.className = "msg " + (role === "user" ? "user" : "assistant");
+  node.className = "msg " + (role === "user" ? "user" : role === "system" ? "system" : "assistant");
   const b = document.createElement("div");
   b.className = "bubble";
   b.textContent = text;
@@ -1494,6 +1613,13 @@ function appendBubble(role, text) {
   box.appendChild(node);
   chatScroll();
   return node;
+}
+
+/* Visible, non-spoken, non-persisted note — used to surface AI/provider
+   failures directly in the chat instead of silently falling back. */
+function appendSystemNote(text) {
+  appendBubble("system", "⚠ " + text);
+  chatScroll();
 }
 
 function showTyping() {
@@ -1589,12 +1715,21 @@ async function sendChat(text) {
   }
 
   const thinking = showTyping();
-  let reply = null;
+  let reply = null, aiError = null;
+  const providerName = ((S.ai && S.ai.provider) || "pollinations");
   try { reply = await aiReply(msg); }
-  catch (e) { log("⚠ AI error: " + e.message); }
+  catch (e) {
+    aiError = e.message || String(e);
+    log("⚠ AI error (" + providerName + "): " + aiError);
+  }
   thinking.remove();
 
   if (!reply) {
+    if (aiError) {
+      appendSystemNote(`${providerName} and the free cloud brain both failed — ${aiError}. Switching to the offline brain.`);
+    } else if ((S.ai && S.ai.provider) !== "offline") {
+      appendSystemNote(`${providerName} and the free cloud brain both returned nothing. Switching to the offline brain.`);
+    }
     log("↩ Falling back to the offline brain.");
     reply = localReply(msg);
   }
@@ -2237,19 +2372,37 @@ function buildTurns(userText) {
   return turns;
 }
 
+/* Sunday tries the configured provider first (Gemini by default — free,
+   no card, and generally sharper than the no-key fallback). If that
+   provider has no key yet, or the call fails for any reason, it falls
+   back to Pollinations (free, no key, no signup) before finally handing
+   off to the local offline brain. Each hop is logged to the console
+   panel so you can see exactly which tier answered. */
 async function aiReply(userText) {
   const ai = S.ai || {};
-  const provider = ai.provider || "pollinations";
+  const provider = ai.provider || "gemini";
   if (provider === "offline") return null;
-
-  const needsKey = !AI_PRESETS[provider]?.free;
-  if (needsKey && !ai.key) return null;
 
   const sys = ((ai.system && ai.system.trim()) || DEFAULT_SYSTEM) + contextBlurb();
   const turns = buildTurns(userText);
+  const needsKey = !AI_PRESETS[provider]?.free;
 
-  if (provider === "pollinations") return await pollinationsReply(sys, turns);
+  if (provider !== "pollinations") {
+    if (needsKey && !ai.key) {
+      log("ℹ No key set for " + provider + " — using the free cloud brain instead.");
+    } else {
+      try {
+        return await callProvider(provider, ai, sys, turns);
+      } catch (e) {
+        log("⚠ " + provider + " failed (" + e.message + ") — falling back to the free cloud brain.");
+      }
+    }
+  }
 
+  return await pollinationsReply(sys, turns);
+}
+
+async function callProvider(provider, ai, sys, turns) {
   if (provider === "gemini") {
     const model = ai.model || AI_PRESETS.gemini.model;
     const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
@@ -2910,6 +3063,7 @@ function systemCheck() {
     `Brain: ${p === "offline" ? "offline (local)" : p + (S.ai.model ? " / " + S.ai.model : "")}`,
     `Voice: ${"speechSynthesis" in window ? (chosenVoice ? chosenVoice.name : "default") : "unsupported"}`,
     `Speech input: ${(window.SpeechRecognition || window.webkitSpeechRecognition) ? "available" : "unsupported"}`,
+    `Hands-free wake word: ${wakeMode ? "ON — say “Hey Sunday”" : "off"}`,
     `Notifications: ${("Notification" in window) ? Notification.permission : "unsupported"}`,
     `Network: ${navigator.onLine ? "online" : "offline"}`,
     `News: ${lastNewsItems.length ? lastNewsItems.length + " items loaded" : "none loaded"}`
