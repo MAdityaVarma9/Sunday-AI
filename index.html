@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#05050a">
 <meta name="description" content="SUNDAY — personal command dashboard: clock, weather, tasks, alarms, notes, conversational AI, music, news.">
-<title>SUNDAY — Personal Command Dashboard</title>
+<title>SUNDAY Mark 2.0 — Personal Command Dashboard</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1707,6 +1707,26 @@ async function commandBrain(raw) {
   m = q.match(/^google\s+(.+)$/);
   if (m) { searchGoogle(m[1]); return `Googling “${m[1]}”.`; }
 
+  /* ---------- SITE LAUNCHER (Jarvis-style "open X") ---------- */
+  m = q.match(/^(?:open|launch|go to|take me to)\s+(.+)$/);
+  if (m) {
+    const target = m[1].trim();
+    const site = SITE_MAP[target] || SITE_MAP[target.replace(/\s+/g, "")];
+    if (site) {
+      window.open(site.url, "_blank");
+      log(site.name + " opened.");
+      return `Opening ${site.name}, boss.`;
+    }
+  }
+
+  /* ---------- RESET CHAT ---------- */
+  if (/^(reset|clear)\s+(the\s+)?(chat|conversation)$/.test(q)) {
+    S.chat = [];
+    save();
+    renderChat();
+    return "Chat history cleared, boss — fresh start.";
+  }
+
   /* ---------- TASKS ---------- */
   m = q.match(/^(?:add|create|new)\s+(?:a\s+)?(?:new\s+)?task\s+(?:to\s+|called\s+|that\s+)?(.+)$/);
   if (m) { addTask(m[1].trim(), ""); return `Added “${m[1].trim()}” to your list.`; }
@@ -1746,6 +1766,26 @@ async function commandBrain(raw) {
 
   return null;
 }
+
+const SITE_MAP = {
+  "youtube": { name: "YouTube", url: "https://www.youtube.com" },
+  "wikipedia": { name: "Wikipedia", url: "https://www.wikipedia.org" },
+  "google": { name: "Google", url: "https://www.google.com" },
+  "gmail": { name: "Gmail", url: "https://mail.google.com" },
+  "email": { name: "Gmail", url: "https://mail.google.com" },
+  "calendar": { name: "Calendar", url: "https://calendar.google.com" },
+  "spotify": { name: "Spotify", url: "https://open.spotify.com" },
+  "drive": { name: "Google Drive", url: "https://drive.google.com" },
+  "github": { name: "GitHub", url: "https://github.com" },
+  "maps": { name: "Maps", url: "https://maps.google.com" },
+  "netflix": { name: "Netflix", url: "https://www.netflix.com" },
+  "amazon": { name: "Amazon", url: "https://www.amazon.in" },
+  "news": { name: "Google News", url: "https://news.google.com" },
+  "linkedin": { name: "LinkedIn", url: "https://www.linkedin.com" },
+  "whatsapp": { name: "WhatsApp Web", url: "https://web.whatsapp.com" },
+  "twitter": { name: "X", url: "https://x.com" },
+  "x": { name: "X", url: "https://x.com" }
+};
 
 function playOnSpotify(query) {
   const q = String(query).replace(/^["']|["']$/g, "").trim();
