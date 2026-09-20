@@ -574,6 +574,163 @@ input[type="time"]{color-scheme:dark}
   background-clip:padding-box;
 }
 
+
+/* --------------------------------------------------------------------------
+   DAILY SCHEDULE — imported from the user's dedicated schedule planner
+   -------------------------------------------------------------------------- */
+.daily-schedule{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  max-height:520px;
+  overflow:auto;
+  padding-right:6px;
+}
+.daily-row{
+  position:relative;
+  display:grid;
+  grid-template-columns:112px 1fr auto;
+  align-items:center;
+  gap:14px;
+  padding:12px 15px;
+  border:1px solid rgba(255,255,255,.055);
+  border-radius:14px;
+  background:linear-gradient(100deg,rgba(255,255,255,.028),rgba(255,255,255,.008));
+  transition:transform .22s ease,border-color .22s ease,background .22s ease,box-shadow .22s ease;
+}
+.daily-row:hover{
+  transform:translateX(3px);
+  border-color:rgba(255,138,0,.28);
+  background:linear-gradient(100deg,rgba(255,138,0,.09),rgba(255,255,255,.012));
+}
+.daily-row::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:18%;
+  bottom:18%;
+  width:3px;
+  border-radius:0 4px 4px 0;
+  background:linear-gradient(180deg,rgba(255,213,74,.35),rgba(255,138,0,.15),transparent);
+}
+.daily-row .daily-time{
+  color:#9b9ba8;
+  font-family:var(--mono);
+  font-size:11.5px;
+  font-weight:700;
+  letter-spacing:.03em;
+  font-variant-numeric:tabular-nums;
+}
+.daily-row .daily-activity{
+  color:#e7e7ed;
+  font-size:13.5px;
+  line-height:1.45;
+}
+.daily-row .daily-duration{
+  color:#696976;
+  font-size:10px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+.daily-row.active{
+  border-color:rgba(125,255,168,.38);
+  background:linear-gradient(100deg,rgba(125,255,168,.13),rgba(255,138,0,.035),rgba(255,255,255,.008));
+  box-shadow:0 0 28px -15px rgba(125,255,168,.9);
+  transform:translateX(4px);
+}
+.daily-row.active::before{
+  background:linear-gradient(180deg,#7dffa8,#ffb347,transparent);
+  box-shadow:0 0 13px rgba(125,255,168,.85);
+}
+.daily-row.active .daily-time{
+  color:var(--green);
+}
+.daily-row.active .daily-activity{
+  color:#fff;
+  font-weight:700;
+}
+.daily-row.active .daily-duration{
+  color:#9dffc0;
+}
+.daily-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:-4px 0 12px;
+}
+.daily-day{
+  color:#d8d8e0;
+  font-family:var(--display);
+  font-size:16px;
+  font-weight:700;
+  letter-spacing:.03em;
+}
+.daily-sub{
+  color:var(--muted);
+  font-size:11px;
+  margin-top:3px;
+}
+.daily-live{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  padding:7px 11px;
+  border-radius:999px;
+  color:var(--green);
+  background:rgba(125,255,168,.07);
+  border:1px solid rgba(125,255,168,.22);
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+.daily-live::before{
+  content:"";
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 10px rgba(125,255,168,.9);
+  animation:dotBlink 1.8s ease-in-out infinite;
+}
+.schedule-divider{
+  height:1px;
+  margin:18px 0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent);
+}
+.task-zone-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:11px;
+}
+.task-zone-title strong{
+  font-family:var(--display);
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.18em;
+  color:var(--yellow);
+}
+.task-zone-title span{
+  color:var(--muted);
+  font-size:10px;
+}
+@media(max-width:700px){
+  .daily-row{
+    grid-template-columns:92px 1fr;
+    gap:9px;
+    padding:11px 12px;
+  }
+  .daily-row .daily-duration{display:none}
+  .daily-row .daily-time{font-size:10.5px}
+  .daily-row .daily-activity{font-size:13px}
+  .daily-head{align-items:flex-start}
+}
+
 /* --------------------------------------------------------------------------
    CONVERSATION
    -------------------------------------------------------------------------- */
@@ -858,14 +1015,32 @@ input[type="time"]{color-scheme:dark}
       </div>
     </section>
 
-    <!-- ============ SCHEDULE ============ -->
+    <!-- ============ DAILY SCHEDULE ============ -->
     <section class="card wide">
-      <h2>Today's Schedule <span class="tag" id="taskCounter"></span></h2>
+      <h2>Daily Schedule <span class="tag" id="dailyScheduleTag"></span></h2>
+
+      <div class="daily-head">
+        <div>
+          <div class="daily-day" id="dailyDay">Loading today's routine…</div>
+          <div class="daily-sub" id="dailySub">Live schedule · current activity highlighted automatically</div>
+        </div>
+        <div class="daily-live" id="dailyLive">LIVE</div>
+      </div>
+
+      <div class="daily-schedule" id="dailySchedule"></div>
+
+      <div class="schedule-divider"></div>
+
+      <div class="task-zone-title">
+        <strong>Personal Tasks</strong>
+        <span id="taskCounter"></span>
+      </div>
+
       <div class="inputrow">
-        <input id="taskText" placeholder="What needs to be done, boss?"
+        <input id="taskText" placeholder="Add an extra task, boss…"
                onkeydown="if(event.key==='Enter')addTask()">
         <input id="taskTime" type="time" style="max-width:140px;flex:0 0 auto">
-        <button class="btn primary" onclick="addTask()">Add</button>
+        <button class="btn primary" onclick="addTask()">Add Task</button>
       </div>
       <div class="schedule" id="schedule"></div>
     </section>
@@ -1094,6 +1269,97 @@ function tick() {
   $("#uptime").textContent = mins < 1 ? "" : `session ${mins}m`;
 
   checkAlarms(d);
+  renderDailySchedule();
+}
+
+
+/* =====================================================================
+   DAILY SCHEDULE
+   Imported from the user's dedicated daily schedule planner.
+   The routine is live and automatically highlights the current activity.
+   ===================================================================== */
+const dailyWeekdaySchedule = [
+  { start:"06:00", end:"07:00", activity:"🏃 Running / workout" },
+  { start:"07:00", end:"07:30", activity:"🛁 Bath + freshen up" },
+  { start:"07:30", end:"08:00", activity:"🍳 Breakfast + get ready" },
+  { start:"08:00", end:"17:00", activity:"🏫 College" },
+  { start:"17:00", end:"17:45", activity:"🎸 Guitar" },
+  { start:"17:45", end:"19:45", activity:"🔧 Project / Lab Work — 2 hrs" },
+  { start:"19:45", end:"20:15", activity:"🍽️ Dinner / break" },
+  { start:"20:15", end:"22:15", activity:"📚 Study — 2 hrs" },
+  { start:"22:15", end:"00:00", activity:"🎮 Gaming — 2 hrs" },
+  { start:"00:00", end:"06:00", activity:"😴 Sleep — 6 hrs" }
+];
+
+const dailyWeekendSchedule = [
+  { start:"06:00", end:"07:00", activity:"🏃 Running" },
+  { start:"07:00", end:"08:00", activity:"🛁 Bath + breakfast" },
+  { start:"08:00", end:"10:00", activity:"📚 Study — 2 hrs" },
+  { start:"10:00", end:"10:30", activity:"☕ Break" },
+  { start:"10:30", end:"12:30", activity:"🔧 Project / Lab — 2 hrs" },
+  { start:"12:30", end:"13:30", activity:"🍽️ Lunch + rest" },
+  { start:"13:30", end:"15:30", activity:"🎮 Gaming — 2 hrs" },
+  { start:"15:30", end:"16:30", activity:"🧘 Free time / nap / outside" },
+  { start:"16:30", end:"17:30", activity:"🎸 Guitar — 1 hr" },
+  { start:"17:30", end:"19:30", activity:"🎮 Gaming — 2 hrs" },
+  { start:"19:30", end:"20:30", activity:"🍽️ Dinner / family / relax" },
+  { start:"20:30", end:"22:00", activity:"🧑‍🤝‍🧑 Free time / movies / friends / hobbies" },
+  { start:"22:00", end:"06:00", activity:"😴 Sleep — 8 hrs" }
+];
+
+function dailyTimeToMinutes(t){
+  const [h,m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function dailyIntervalContains(cur,start,end){
+  if(start < end) return cur >= start && cur < end;
+  if(start > end) return cur >= start || cur < end;
+  return false;
+}
+
+function dailyActiveIndex(schedule,cur){
+  for(let i=0;i<schedule.length;i++){
+    if(dailyIntervalContains(cur,dailyTimeToMinutes(schedule[i].start),dailyTimeToMinutes(schedule[i].end))) return i;
+  }
+  return -1;
+}
+
+function dailyDuration(start,end){
+  let s=dailyTimeToMinutes(start), e=dailyTimeToMinutes(end);
+  let mins=e-s;
+  if(mins<=0) mins+=1440;
+  if(mins%60===0) return `${mins/60} hr${mins/60===1?"":"s"}`;
+  return `${Math.floor(mins/60)}h ${mins%60}m`;
+}
+
+function renderDailySchedule(){
+  const box=$("#dailySchedule");
+  if(!box) return;
+
+  const now=new Date();
+  const day=now.getDay();
+  const isWeekend=(day===0 || day===6);
+  const schedule=isWeekend ? dailyWeekendSchedule : dailyWeekdaySchedule;
+  const cur=now.getHours()*60+now.getMinutes();
+  const active=dailyActiveIndex(schedule,cur);
+
+  const dayName=now.toLocaleDateString(undefined,{weekday:"long"});
+  $("#dailyDay").textContent=`${dayName} · ${isWeekend ? "Weekend Routine" : "Weekday Routine"}`;
+  $("#dailyScheduleTag").textContent=active>=0 ? "NOW" : "";
+  $("#dailySub").textContent=active>=0
+    ? `Current focus: ${schedule[active].activity.replace(/^\\S+\\s*/,"")}`
+    : "Live schedule · current activity highlighted automatically";
+
+  box.innerHTML=schedule.map((item,i)=>{
+    const isActive=i===active;
+    return `
+      <div class="daily-row ${isActive ? "active" : ""}" ${isActive ? 'aria-current="time"' : ""}>
+        <div class="daily-time">${item.start} – ${item.end}</div>
+        <div class="daily-activity">${item.activity}</div>
+        <div class="daily-duration">${dailyDuration(item.start,item.end)}</div>
+      </div>`;
+  }).join("");
 }
 
 /* =====================================================================
